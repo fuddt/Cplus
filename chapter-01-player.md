@@ -204,13 +204,13 @@ stateDiagram-v2
 
     [*] --> Fine : 初期状態
 
-    Fine   --> Middle : ratio ≤ 0.67
+    Fine   --> Caution : ratio ≤ 0.67
     Fine   --> Danger : ratio ≤ 0.33
 
-    Middle --> Fine   : ratio > 0.67
-    Middle --> Danger : ratio ≤ 0.33
+    Caution --> Fine   : ratio > 0.67
+    Caution --> Danger : ratio ≤ 0.33
 
-    Danger --> Middle : ratio > 0.33
+    Danger --> Caution : ratio > 0.33
     Danger --> Fine   : ratio > 0.67
 ```
 
@@ -222,7 +222,7 @@ flowchart TD
     B["ratio = hp ÷ maxHp を計算\n（float にキャストして整数除算を避ける）"]
     C{ratio の値は？}
     D["condition = Fine"]
-    E["condition = Middle"]
+    E["condition = Caution"]
     F["condition = Danger"]
     G["終了"]
 
@@ -278,7 +278,7 @@ flowchart LR
 
 enum class Condition {
     Fine,    // HP 67% 超
-    Middle,  // HP 34〜67%
+    Caution,  // HP 34〜67%
     Danger,  // HP 33% 以下
 };
 
@@ -326,7 +326,7 @@ void Player::updateCondition() {
     if (ratio > 0.67f) {
         condition = Condition::Fine;
     } else if (ratio > 0.33f) {
-        condition = Condition::Middle;
+        condition = Condition::Caution;
     } else {
         condition = Condition::Danger;
     }
@@ -346,7 +346,7 @@ Condition Player::getCondition() const { return condition; }
 std::string conditionName(Condition c) {
     switch (c) {
         case Condition::Fine:   return "Fine";
-        case Condition::Middle: return "Middle";
+        case Condition::Caution: return "Caution";
         case Condition::Danger: return "Danger";
     }
     return "Unknown";
@@ -367,7 +367,7 @@ int main() {
     printStatus(player);   // HP: 25/100   [Danger]
 
     player.heal(30);
-    printStatus(player);   // HP: 55/100   [Middle]
+    printStatus(player);   // HP: 55/100   [Caution]
 
     player.heal(100);      // 上限チェックが機能するか確認
     printStatus(player);   // HP: 100/100  [Fine]
