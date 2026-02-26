@@ -257,8 +257,8 @@ classDiagram
         +updateCondition()
     }
 
-    note for Herb "責務：\n回復量を決める\nPlayerに heal() を依頼する"
-    note for Player "責務：\nhp を正しく計算する\n上限・下限を守る\n状態を更新する\n将来の補正を処理する"
+    note for Herb "責務：<br/>回復量を決める<br/>Playerに heal() を依頼する"
+    note for Player "責務：<br/>hp を正しく計算する<br/>上限・下限を守る<br/>状態を更新する<br/>将来の補正を処理する"
 
     Herb --> Player : heal() を呼ぶ
 ```
@@ -302,15 +302,15 @@ classDiagram
 ```mermaid
 flowchart TB
     subgraph Q1["問い①：HPを直接変えていいのか？"]
-        A1["⚠️ 動くがロジックが漏れる\n将来の仕様変更で破綻しやすい"]
+        A1["⚠️ 動くがロジックが漏れる<br/>将来の仕様変更で破綻しやすい"]
     end
 
     subgraph Q2["問い②：どこに回復ロジックを書くべきか？"]
-        A2["✅ Player側に集約する\n「状態を持つ者が管理する」"]
+        A2["✅ Player側に集約する<br/>「状態を持つ者が管理する」"]
     end
 
     subgraph Q3["問い③：状態更新はどこで実行するのが最適か？"]
-        A3["✅ heal() / damage() の内部\nHP変更が必ず状態更新とセットになる"]
+        A3["✅ heal() / damage() の内部<br/>HP変更が必ず状態更新とセットになる"]
     end
 
     Q1 --> Q2 --> Q3

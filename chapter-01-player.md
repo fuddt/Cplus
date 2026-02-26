@@ -125,16 +125,16 @@ classDiagram
 ```mermaid
 flowchart LR
     subgraph private["🔒 private（外から触れない）"]
-        hp["hp\n（現在HP）"]
-        maxHp["maxHp\n（最大HP）"]
-        cond["condition\n（状態）"]
+        hp["hp<br/>（現在HP）"]
+        maxHp["maxHp<br/>（最大HP）"]
+        cond["condition<br/>（状態）"]
     end
 
     subgraph public["🔓 public（外から呼べる）"]
         heal["heal()"]
         damage["damage()"]
         update["updateCondition()"]
-        getters["getHp()\ngetMaxHp()\ngetCondition()"]
+        getters["getHp()<br/>getMaxHp()<br/>getCondition()"]
     end
 
     heal   --> hp
@@ -159,7 +159,7 @@ flowchart TD
     A["heal(int amount) 呼び出し"]
     B["hp = hp + amount"]
     C{hp > maxHp ?}
-    D["hp = maxHp\n（上限に制限）"]
+    D["hp = maxHp<br/>（上限に制限）"]
     E["そのまま"]
     F["updateCondition() を呼ぶ"]
     G["終了"]
@@ -179,7 +179,7 @@ flowchart TD
     A["damage(int amount) 呼び出し"]
     B["hp = hp - amount"]
     C{hp < 0 ?}
-    D["hp = 0\n（0未満にしない）"]
+    D["hp = 0<br/>（0未満にしない）"]
     E["そのまま"]
     F["updateCondition() を呼ぶ"]
     G["終了"]
@@ -219,7 +219,7 @@ stateDiagram-v2
 ```mermaid
 flowchart TD
     A["updateCondition() 呼び出し"]
-    B["ratio = hp ÷ maxHp を計算\n（float にキャストして整数除算を避ける）"]
+    B["ratio = hp ÷ maxHp を計算<br/>（float にキャストして整数除算を避ける）"]
     C{ratio の値は？}
     D["condition = Fine"]
     E["condition = Middle"]
@@ -247,11 +247,11 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    外部["外部コード\n（main.cpp 等）"]
+    外部["外部コード<br/>（main.cpp 等）"]
 
     subgraph Player ["Player クラス"]
-        pub["【public】\nheal(amount)\ndamage(amount)\ngetHp()\ngetCondition()"]
-        priv["【private】\nhp\nmaxHp\ncondition"]
+        pub["【public】<br/>heal(amount)<br/>damage(amount)<br/>getHp()<br/>getCondition()"]
+        priv["【private】<br/>hp<br/>maxHp<br/>condition"]
         pub --> priv
     end
 
