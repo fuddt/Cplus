@@ -78,11 +78,11 @@ stateDiagram-v2
 
     [*] --> Fine : 開始（HP 100%）
 
-    Fine   --> Middle : HP 67%以下
-    Middle --> Fine   : HP 67%超
+    Fine   --> Caution: HP 67%以下
+    Caution --> Fine   : HP 67%超
 
-    Middle --> Danger : HP 33%以下
-    Danger --> Middle : HP 33%超
+    Caution --> Danger : HP 33%以下
+    Danger --> Caution : HP 33%超
 
     Danger --> [*] : HP 0（ゲームオーバー）
 ```
@@ -197,6 +197,6 @@ HP: 55/100
 
 - プレイヤーが2人になったら `hp1`, `hp2` ... と変数が増える
 - `hp += 30` は「上限チェックしなければならない」というルールが、コードの外に漏れている
-- 状態（Fine / Middle / Danger）をどこで管理するのか？
+- 状態（Fine / Caution / Danger）をどこで管理するのか？
 
 次の章で、C++の「クラス」を使ってこれを整理していく。
