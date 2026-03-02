@@ -277,7 +277,7 @@ void Herb::use(Player& player) {
 
 enum class Condition {
     Fine,
-    Middle,
+    Caution,
     Danger,
 };
 
@@ -324,7 +324,7 @@ void Player::damage(int amount) {
 void Player::updateCondition() {
     float ratio = static_cast<float>(hp) / maxHp;
     if      (ratio > 0.67f) condition = Condition::Fine;
-    else if (ratio > 0.33f) condition = Condition::Middle;
+    else if (ratio > 0.33f) condition = Condition::Caution;
     else                    condition = Condition::Danger;
 }
 
@@ -362,7 +362,7 @@ const std::vector<Herb>&  Player::getInventory() const { return inventory; }
 std::string conditionName(Condition c) {
     switch (c) {
         case Condition::Fine:   return "Fine";
-        case Condition::Middle: return "Middle";
+        case Condition::Caution: return "Caution";
         case Condition::Danger: return "Danger";
     }
     return "Unknown";
@@ -391,7 +391,7 @@ int main() {
     printStatus(player);    // HP: 25/100  [Danger]  アイテム数: 3
 
     player.useItem(0);      // index 0 を使う
-    printStatus(player);    // HP: 55/100  [Middle]  アイテム数: 2
+    printStatus(player);    // HP: 55/100  [Caution]  アイテム数: 2
 
     player.useItem(0);
     printStatus(player);    // HP: 85/100  [Fine]    アイテム数: 1
@@ -409,7 +409,7 @@ int main() {
 **期待される出力：**
 ```
 HP: 25/100  [Danger]  アイテム数: 3
-HP: 55/100  [Middle]  アイテム数: 2
+HP: 55/100  [Caution]  アイテム数: 2
 HP: 85/100  [Fine]    アイテム数: 1
 HP: 85/100  [Fine]    アイテム数: 0
 HP: 85/100  [Fine]    アイテム数: 0
@@ -434,7 +434,7 @@ sequenceDiagram
     Player ->> Herb  : use(*this)
     activate Herb
     Herb  ->> Player : heal(30)
-    note right of Player: hp=55, condition=Middle
+    note right of Player: hp=55, condition=Caution
     Herb -->> Player : 完了
     deactivate Herb
     Player ->> Player : erase(begin() + 0)

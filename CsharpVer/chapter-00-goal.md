@@ -1,12 +1,12 @@
-# 第0章：ゴールを確認しよう（C#版）
+# 第0章：ゴールを確認しよう
 
-このコースの C# 版では、コンソール RPG を題材にして次の設計を段階的に作る。
+このコースでは、コンソール RPG を題材にして次の設計を段階的に作る。
 
-- `Player` が HP と状態（Fine / Middle / Danger）を管理する
+- `Player` が HP と状態（Fine / Caution / Danger）を管理する
 - `Herb` や `Key` などのアイテムを使える
 - インベントリを `List<T>` で管理する
 - 継承 / ポリモーフィズムで拡張しやすくする
-- C++ 版の `unique_ptr` の代わりに、C# では GC と `IDisposable` を正しく理解する
+- メモリ管理（GC）とリソース解放（IDisposable）を正しく理解する
 
 ## 何を作るのか
 
@@ -34,11 +34,11 @@ flowchart LR
 stateDiagram-v2
     [*] --> Fine : 開始（HP 100%）
 
-    Fine --> Middle : HP 比率 <= 0.67
-    Middle --> Fine : HP 比率 > 0.67
+    Fine --> Caution : HP 比率 <= 0.67
+    Caution --> Fine : HP 比率 > 0.67
 
-    Middle --> Danger : HP 比率 <= 0.33
-    Danger --> Middle : HP 比率 > 0.33
+    Caution --> Danger : HP 比率 <= 0.33
+    Danger --> Caution : HP 比率 > 0.33
 
     Danger --> [*] : HP 0（ゲームオーバー）
 ```
@@ -74,15 +74,15 @@ flowchart LR
     C7["第7章<br/>参照管理<br/>GC / IDisposable"]
 ```
 
-## C#版での読み替えポイント（C++版との差分）
+## 本コースで扱う主要な C# の機能
 
-| C++版 | C#版 |
+| 機能 | 内容 |
 |---|---|
-| `std::vector<T>` | `List<T>` |
-| `enum class` | `enum` |
-| `.h / .cpp` 分割 | 通常は `.cs` 1ファイル（クラス単位） |
-| 参照渡し `Player&` | `class` は参照型（引数は値渡しでも同じインスタンスを操作可能） |
-| `unique_ptr` | GC + `IDisposable` / `using` |
+| `List<T>` | 動的な配列（リスト） |
+| `enum` | 列挙型。状態の定義に使用 |
+| `.cs` ファイル | 通常はクラス単位でファイルを構成 |
+| 参照型（class） | オブジェクトを「参照」として扱う仕組み |
+| GC / IDisposable | メモリの自動回収とリソースの明示的解放 |
 
 ## まず動かしてみよう
 

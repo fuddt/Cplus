@@ -54,7 +54,7 @@ end note
 
 **`vector<Item>` の各スロットは `Item` のサイズしか持てない。**
 `GreenHerb` を入れようとすると、`Item` 部分だけコピーされ、
-`healAmount` など派生クラス固有のデータは**切り落とされる（スライス）**。
+`healAmount` など派生クラス固有のデータは**切り落とされる（スライシング）**。
 
 これを **オブジェクトスライシング** と呼ぶ。
 
@@ -279,7 +279,7 @@ classDiagram
 #include <memory>
 #include "Item.h"
 
-enum class Condition { Fine, Middle, Danger };
+enum class Condition { Fine, Caution, Danger };
 
 class Player {
 public:
@@ -390,7 +390,7 @@ int ItemBox::getCount() const {
 std::string conditionName(Condition c) {
     switch (c) {
         case Condition::Fine:   return "Fine";
-        case Condition::Middle: return "Middle";
+        case Condition::Caution: return "Caution";
         case Condition::Danger: return "Danger";
     }
     return "Unknown";
@@ -426,7 +426,7 @@ int main() {
 
     // アイテムを使う
     player.useItem(0);    // GreenHerb 使用
-    printStatus(player);  // HP: 50/100  [Middle]  所持: 1
+    printStatus(player);  // HP: 50/100  [Caution]  所持: 1
 
     player.useItem(0);    // RedHerb 使用
     printStatus(player);  // HP: 100/100  [Fine]   所持: 0
@@ -444,7 +444,7 @@ int main() {
 --- ボックス: 3個
 --- ボックス: 1個（鍵だけ残る）
 HP: 20/100  [Danger]  所持アイテム数: 2
-HP: 50/100  [Middle]  所持アイテム数: 1
+HP: 50/100  [Caution]  所持アイテム数: 1
 HP: 100/100  [Fine]   所持アイテム数: 0
 ```
 

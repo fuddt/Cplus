@@ -105,7 +105,7 @@ classDiagram
     class Condition {
         <<enumeration>>
         Fine
-        Middle
+        Caution
         Danger
     }
 
@@ -380,7 +380,7 @@ int main() {
 ```
 HP: 100/100  [Fine]
 HP: 25/100   [Danger]
-HP: 55/100   [Middle]
+HP: 55/100   [Caution]
 HP: 100/100  [Fine]
 ```
 

@@ -1,4 +1,4 @@
-# 第6章：王道設計へ進化（ポリモーフィズム）（C#版）
+# 第6章：王道設計へ進化（ポリモーフィズム）
 
 ## 6-1 前章の問題を整理する
 
@@ -12,7 +12,7 @@
 
 ## 6-2 共通インターフェースを作る
 
-C#版では `abstract class Item` を使う。
+共通の型として `abstract class Item` を定義する。
 
 ```csharp
 public abstract class Item
@@ -38,7 +38,7 @@ classDiagram
     Item <|-- Key
 ```
 
-## 6-3 3つのキーワードを理解する（C#版）
+## 6-3 継承に関する3つのキーワード
 
 ### `abstract`
 
@@ -60,7 +60,7 @@ flowchart LR
     staticCall["呼び出し側は Item 型で扱う"] --> runtime["実行時に実体型を確認"] --> impl["GreenHerb / RedHerb / Key の Use() を呼ぶ"]
 ```
 
-## 6-4 動的ディスパッチのイメージ
+## 6-4 動的ディパスッチのイメージ
 
 `Item item = new GreenHerb();`
 として `item.Use(player)` を呼ぶと、実行時に `GreenHerb.Use()` が呼ばれる。
@@ -128,12 +128,12 @@ flowchart LR
 - 新アイテム追加時に `Player` の `switch` を増やさなくてよい
 - 責務が各クラスに分散される（良い意味で）
 
-## 6-8 C#版の注意：デストラクタより `IDisposable`
+## 6-8 リソース管理の注意：IDisposable
 
-C++版では仮想デストラクタが重要だったが、C# は GC があるので事情が異なる。
+C# ではメモリ解放は主に GC（ガベージコレクション）が自動で行う。
 
-- メモリ解放は主に GC が担当
-- ただしファイル・ソケット等の外部リソースは `IDisposable` を使う
+- オブジェクトがどこからも参照されなくなった時点で GC の回収対象になる
+- ただし、ファイルや通信などの外部リソースを扱う場合は `IDisposable` を用いて明示的に解放を行う必要がある
 
 このコースの `Item` は通常 `IDisposable` 不要。
 第7章で「参照管理」と合わせて整理する。
@@ -255,7 +255,7 @@ public class Player
     {
         float ratio = (float)hp / maxHp;
         if (ratio > 0.67f) condition = Condition.Fine;
-        else if (ratio > 0.33f) condition = Condition.Middle;
+        else if (ratio > 0.33f) condition = Condition.Caution;
         else condition = Condition.Danger;
     }
 

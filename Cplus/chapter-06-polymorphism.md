@@ -429,7 +429,7 @@ void Key::use(Player& /* player */) {
 std::string conditionName(Condition c) {
     switch (c) {
         case Condition::Fine:   return "Fine";
-        case Condition::Middle: return "Middle";
+        case Condition::Caution: return "Caution";
         case Condition::Danger: return "Danger";
     }
     return "Unknown";
@@ -456,7 +456,7 @@ int main() {
     printStatus(player);    // HP: 20/100  [Danger]
 
     useItem(greenHerb, player);
-    printStatus(player);    // HP: 50/100  [Middle]
+    printStatus(player);    // HP: 50/100  [Caution]
 
     useItem(redHerb, player);
     printStatus(player);    // HP: 100/100  [Fine] ← 上限で止まる
@@ -471,7 +471,7 @@ int main() {
 **期待される出力：**
 ```
 HP: 20/100  [Danger]
-HP: 50/100  [Middle]
+HP: 50/100  [Caution]
 HP: 100/100  [Fine]
 [ボスルームの鍵] を使った。扉が開いた。
 ```

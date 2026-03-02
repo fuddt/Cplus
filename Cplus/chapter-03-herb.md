@@ -237,7 +237,7 @@ struct Herb {
 std::string conditionName(Condition c) {
     switch (c) {
         case Condition::Fine:   return "Fine";
-        case Condition::Middle: return "Middle";
+        case Condition::Caution: return "Caution";
         case Condition::Danger: return "Danger";
     }
     return "Unknown";
@@ -257,7 +257,7 @@ int main() {
     printStatus(player);    // HP: 25/100  [Danger]
 
     greenHerb.use(player);
-    printStatus(player);    // HP: 55/100  [Middle]
+    printStatus(player);    // HP: 55/100  [Caution]
 
     return 0;
 }
@@ -266,7 +266,7 @@ int main() {
 **期待される出力：**
 ```
 HP: 25/100  [Danger]
-HP: 55/100  [Middle]
+HP: 55/100  [Caution]
 ```
 
 ---
@@ -289,7 +289,7 @@ sequenceDiagram
     activate Herb
     Herb  ->> Player : heal(30)
     activate Player
-    note right of Player: hp = 55<br/>condition = Middle
+    note right of Player: hp = 55<br/>condition = Caution
     Player -->> Herb  : 完了
     deactivate Player
     Herb  -->> main  : 完了

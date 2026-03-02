@@ -1,4 +1,4 @@
-# 第5章：設計の限界（C#版）
+# 第5章：設計の限界
 
 ## 5-1 現状を確認する
 
@@ -42,7 +42,7 @@ flowchart TD
 
 ## 5-4 ダメな解決策 A：リストを増やす
 
-`List<Herb>` と `List<Key>` を別々に持つ案。
+型ごとにリストを別々に持つ案。
 
 ```mermaid
 flowchart LR
@@ -59,7 +59,7 @@ flowchart LR
 
 ## 5-5 ダメな解決策 B：`enum` と分岐で管理する
 
-1つの `struct` / `class` に全部押し込んで、`Type` で分岐する案。
+1つのクラスに全部押し込んで、`Type` で分岐する案。
 
 ```csharp
 public enum ItemType { GreenHerb, RedHerb, MixedHerb, Key }
@@ -109,7 +109,7 @@ flowchart LR
     Inv --> M["MixedHerb"]
 ```
 
-この構造を C# で自然に表現するには、基底クラスまたはインターフェースを使う。
+この構造を自然に表現するには、基底クラスまたはインターフェースを使う。
 
 ## 5-8 解決策の方向性
 
