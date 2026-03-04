@@ -1,90 +1,229 @@
-# 第7章：アイテムボックスと参照管理
+# 第7章：アイテムボックスと参照型の設計
 
-## 7-1 前章の残った問いから始める
+---
 
-第6章で `List<Item>` に進化した。次に考えたいのは次の問い。
+## 7-1 前章の成果と次の目標
 
-- アイテムボックスを追加したい
-- ボックスからプレイヤーへアイテムを移したい
-- メモリ解放は誰が担当するのか
+第6章で `List<Item>` に異種アイテムを入れ、ポリモーフィズムが動くようになった。
 
-## 7-2 `List<Item>` が自然に使える仕組み
+```csharp
+var items = new List<Item> { new GreenHerb(), new RedHerb(), new Key("Boss") };
+foreach (var item in items) item.Use(player);  // 自然に動く ✅
+```
 
-C# の `class` は参照型なので、`List<Item>` の各要素には「`Item` 型の参照」が入る。
+次の目標は2つ。
 
-そのため、`GreenHerb` / `RedHerb` / `Key` の実体はそのまま維持される。
+- **アイテムボックスを追加する**（インベントリと別の保管場所）
+- **C# の参照型がなぜこれほど自然に扱えるのかを理解する**
+
+---
+
+## 7-2 なぜ C# の `List<Item>` はそのまま動くのか
+
+C# の `class` は **参照型** だ。`List<Item>` の各スロットには「実体そのもの」ではなく「実体へのアドレス（参照）」が入る。
 
 ```mermaid
 flowchart LR
-    L0["List&lt;Item&gt;[0]<br/>参照"] --> G["GreenHerb 実体"]
-    L1["List&lt;Item&gt;[1]<br/>参照"] --> R["RedHerb 実体"]
-    L2["List&lt;Item&gt;[2]<br/>参照"] --> K["Key 実体"]
+    subgraph list["List&lt;Item&gt;"]
+        L0["[0] 参照"]
+        L1["[1] 参照"]
+        L2["[2] 参照"]
+    end
+
+    subgraph heap["ヒープ（実際のオブジェクト）"]
+        G["GreenHerb<br/>healAmount=30"]
+        R["RedHerb<br/>healAmount=60"]
+        K["Key<br/>keyId=Boss"]
+    end
+
+    L0 -->|"指す"| G
+    L1 -->|"指す"| R
+    L2 -->|"指す"| K
 ```
 
-## 7-3 メモリ管理：GC の基本
+`GreenHerb` を `Item` 型の変数に代入しても、**実体は GreenHerb のまま**だ。
+参照が入っているだけなので、情報が切り落とされることはない。
 
-C# では通常、`new` したオブジェクトを明示的に破棄する必要はない。
+```csharp
+Item item = new GreenHerb();  // 参照が Item 型の変数に入る
+item.Use(player);             // 実体は GreenHerb → GreenHerb.Use() が呼ばれる ✅
+```
 
-- 参照されなくなったオブジェクトは GC（ガベージコレクション）の回収対象になる
-- 回収タイミングはシステムが決める（即時とは限らない）
-- 開発者は「誰がこのメモリを消すか」を意識せずにコードが書ける
+> **C# ならではの強み：**
+> `List<Item>` に `GreenHerb` を入れても、実体はそのまま。
+> ポリモーフィズムが「自然に」動くのは、C# が参照型を基本設計にしているからだ。
+
+---
+
+## 7-3 GC（ガベージコレクション）の基本
+
+C# では `new` したオブジェクトを明示的に破棄する必要はない。
+
+```csharp
+{
+    var herb = new GreenHerb();
+    // herb を使う
+}
+// スコープを抜けても明示的な削除は不要
+// GC が「参照されなくなった」タイミングで自動回収する
+```
 
 ```mermaid
 flowchart TD
-    A["new で生成"] --> B["List や変数から参照される"]
-    B --> C{"参照が残っている？"}
+    A["new で生成"] --> B["変数から参照される"]
+    B --> C{"どこかから参照が残っている？"}
     C -- Yes --> D["生存"]
     C -- No --> E["GC の回収対象"]
+    E --> F["自動でメモリ解放 ✅"]
 ```
 
-## 7-4 それでも注意が必要な点（参照共有）
+**GC の特性：**
 
-メモリ解放は自動だが、問題がすべて消えるわけではない。特に注意するのは「参照の共有」。
+| 特性 | 内容 |
+|---|---|
+| 自動回収 | 参照がなくなれば GC が回収する |
+| タイミング | 即時ではなく、GC が決定する |
+| 対象 | ヒープ上の通常オブジェクト（`class`）|
 
-- 同じインスタンスを複数の場所から参照できる
-- どこで状態を変更したか追いづらくなる
-- 「インベントリからボックスへ移す」操作などで、二重保持を避けたい
+C# 開発者は「誰がいつメモリを解放するか」をほとんど意識しなくてよい。
+
+---
+
+## 7-4 参照共有には気をつける
+
+GC がメモリを管理してくれる一方で、**参照の共有** には設計上の注意が必要だ。
+
+C# では同じインスタンスを複数の変数から参照できる。
+
+```csharp
+var herb = new GreenHerb();
+var a = herb;  // 同じ GreenHerb インスタンスを参照
+var b = herb;  // こちらも同じ
+
+// a を通じて状態を変えると b からも見える
+```
 
 ```mermaid
 flowchart LR
-    P["Player.inventory"] --> X["Item 参照"]
-    B["ItemBox.items"] --> X
-    X --> Warn["同じ実体を共有中<br/>意図した設計か要確認"]
+    A["変数 a<br/>（参照）"]
+    B["変数 b<br/>（参照）"]
+    O["GreenHerb インスタンス<br/>（実体）"]
+
+    A -->|"指している"| O
+    B -->|"指している"| O
+
+    W["⚠️ 同じ実体を共有<br/>一方を変えると両方に影響"]
 ```
 
-## 7-5 オブジェクトの参照管理と「所有」の考え方
+「インベントリからボックスへアイテムを移す」操作では、**同じ参照を2箇所で持ち続けることを避けたい**。
 
-C# の標準的な参照型では、一つのオブジェクトを複数の変数から同時に指し示すことができる。
-そのため、「このオブジェクトは現在誰が管理しているのか」を設計段階で明確にしておくことが重要になる。
+---
 
-このコースでは以下のルールにする。
+## 7-5 アイテムの「移動」を正しく設計する
 
-- `AddItem(item)` / `Store(item)` の呼び出し後は、呼び出し側で同じ参照を持ち続けない運用にする
+C# でアイテムを「移動」するとは、**一方のリストから取り出して、もう一方に追加する** ことだ。
+
+```csharp
+// ❌ 悪い例：同じ参照を2箇所に追加してしまう
+var item = inventory[0];
+itemBox.Add(item);       // ボックスにも追加
+// inventory[0] はまだ残っている → 2箇所が同じ実体を参照
+
+// ✅ 良い例：取り出してから追加する
+var item = inventory[0];
+inventory.RemoveAt(0);   // インベントリから削除してから
+itemBox.Add(item);       // ボックスに追加
+// 所在は常に1箇所
+```
+
+```mermaid
+flowchart LR
+    subgraph bad["❌ 悪い移動（コピー）"]
+        BA["inventory[0]"] -->|"参照"| BO["GreenHerb"]
+        BB["itemBox[0]"] -->|"参照"| BO
+        BW["2箇所が同じ実体を持つ"]
+    end
+
+    subgraph good["✅ 良い移動（取り出してから追加）"]
+        GA["inventory<br/>（削除済み）"]
+        GB["itemBox[0]"] -->|"参照"| GO["GreenHerb"]
+        GW["所在は1箇所だけ"]
+    end
+
+    style BW fill:#ffebee,stroke:#c62828
+    style GW fill:#e8f5e9,stroke:#2e7d32
+```
+
+**このコースでの設計ルール：**
+
+- `AddItem(item)` / `Store(item)` を呼んだ後は、呼び出し側で同じ変数を使い続けない
 - 「移動」は `RemoveAt` で取り出してから `Add` することを徹底する
-- 必要なら `null` を代入して参照を手放したことを明示する
+- 必要なら `null` を代入して「参照を手放した」ことをコードで明示する
+
+```csharp
+var item = box.Retrieve(0);  // ボックスから取り出す
+if (item is not null)
+{
+    player.AddItem(item);
+    item = null;  // 参照を手放したことを明示（任意だが意図を表せる）
+}
+```
+
+---
 
 ## 7-6 `IDisposable` と `using`（外部リソースの管理）
 
-GC はメモリ回収を助けるが、ファイルやネットワーク接続などの外部リソースは `IDisposable` で明示的に解放する。
+GC はメモリを自動回収するが、**ファイルやネットワーク接続などの外部リソース** は明示的に解放する必要がある。
+
+そのために C# では `IDisposable` インターフェースと `using` 構文が用意されている。
 
 ```csharp
-using var stream = File.OpenRead(path);
+// using を使うと、スコープ終了時に自動で Dispose() が呼ばれる
+using var stream = File.OpenRead("save.dat");
 // ここで stream を使う
-// スコープ終了時に自動的に Dispose() が呼ばれ、リソースが解放される
+// スコープ終了時に自動で閉じられる ✅
 ```
 
-ゲームのアイテム自体は通常 `IDisposable` である必要はないが、
-将来的に画像・音声・ハンドルなどを直接保持するクラスを作る際には重要になる。
+```mermaid
+flowchart TD
+    A["外部リソースを開く<br/>（ファイル・通信など）"]
+    B["using var resource = ..."]
+    C["リソースを使う"]
+    D["スコープ終了"]
+    E["Dispose() が自動で呼ばれる ✅"]
+
+    A --> B --> C --> D --> E
+```
+
+**GC と IDisposable の使い分け：**
+
+| 対象 | 管理方法 |
+|---|---|
+| 通常のオブジェクト（`class`）| GC が自動で回収 |
+| ファイル・通信・ハンドルなど | `using` / `Dispose()` で明示的に解放 |
+
+このコースのアイテムクラス（`GreenHerb` / `Key` など）は通常 `IDisposable` を実装する必要はない。
+将来、画像データや音声ファイルを直接保持するクラスを作るときに重要になる。
+
+---
 
 ## 7-7 アイテムボックスの設計
 
-プレイヤーとは別に、アイテムを保管する `ItemBox` を作る。
+```mermaid
+flowchart LR
+    subgraph Player["Player"]
+        PI["List&lt;Item&gt; inventory"]
+    end
 
-- `Store(Item item)`
-- `Retrieve(int index)`
-- `GetCount()`
+    subgraph Box["ItemBox"]
+        BI["List&lt;Item&gt; items"]
+    end
 
-`Retrieve` は参照を取り出し、呼び出し側で `Player.AddItem()` する。
+    PI -->|"Store: Player → Box へ移動"| BI
+    BI -->|"Retrieve: Box → Player へ移動"| PI
+```
+
+### クラス図
 
 ```mermaid
 classDiagram
@@ -93,6 +232,8 @@ classDiagram
         +AddItem(Item item)
         +RemoveItem(int index) Item?
         +UseItem(int index)
+        +Heal(int amount)
+        +Damage(int amount)
     }
 
     class ItemBox {
@@ -110,6 +251,8 @@ classDiagram
     Player --> Item
     ItemBox --> Item
 ```
+
+---
 
 ## 7-8 実装コード
 
@@ -148,13 +291,13 @@ public class Player
     public bool UseItem(int index)
     {
         if (index < 0 || index >= inventory.Count) return false;
-
         inventory[index].Use(this);
         inventory.RemoveAt(index);
         return true;
     }
 
     public int GetItemCount() => inventory.Count;
+
     public void Heal(int amount)
     {
         hp += amount;
@@ -217,30 +360,39 @@ using System;
 
 static void PrintStatus(Player p, ItemBox box)
 {
-    Console.WriteLine($"HP: {p.GetHp()}/{p.GetMaxHp()}, Condition: {p.GetCondition()}, PlayerItems: {p.GetItemCount()}, BoxItems: {box.GetCount()}");
+    Console.WriteLine(
+        $"HP: {p.GetHp()}/{p.GetMaxHp()}, " +
+        $"Condition: {p.GetCondition()}, " +
+        $"所持: {p.GetItemCount()}, " +
+        $"ボックス: {box.GetCount()}");
 }
 
 var player = new Player(100);
 var box = new ItemBox();
 
-player.Damage(80);
-
+// ボックスにアイテムを預ける
 box.Store(new GreenHerb());
 box.Store(new RedHerb());
 box.Store(new Key("BossRoom"));
 
 PrintStatus(player, box);
 
+// ボックスからインベントリへ移動
 var item = box.Retrieve(0);
 if (item is not null)
 {
     player.AddItem(item);
-    item = null; // 呼び出し側の参照を手放す（運用ルールの明示）
+    item = null;  // 参照を手放す
 }
 
-player.UseItem(0);
+player.Damage(80);
+PrintStatus(player, box);
+
+player.UseItem(0);  // GreenHerb 使用
 PrintStatus(player, box);
 ```
+
+---
 
 ## 7-9 全体の処理シーケンス
 
@@ -252,23 +404,47 @@ sequenceDiagram
     participant Item as GreenHerb
 
     Main->>Box: Store(new GreenHerb())
+    Note right of Box: GreenHerb の参照を保持
+
     Main->>Box: Retrieve(0)
-    Box-->>Main: Item 参照を返す
+    Box-->>Main: Item 参照を返す（Boxからは削除）
+
     Main->>Player: AddItem(item)
+    Note right of Player: Player が参照を保持
+
     Main->>Player: UseItem(0)
     Player->>Item: Use(this)
     Item->>Player: Heal(30)
     Player->>Player: inventory.RemoveAt(0)
+    Note right of Player: 参照がどこからも消える → GC が回収
 ```
 
-## 7-10 メモリ管理とリソース管理の使い分け
+---
 
-重要なのは、GC が自動的にメモリを回収する範囲と、`IDisposable` を使って明示的にリソースを解放すべき範囲を正しく区別すること。
+## 7-10 GC と IDisposable の整理
 
-- メモリ（`class` のインスタンスなど）：参照がなくなれば GC が回収する
-- 外部リソース（ファイル、ネットワーク、ハンドル）：`using` や `Dispose()` で即座に解放する
+```mermaid
+flowchart TB
+    subgraph gc["GC が担当（自動）"]
+        G1["List&lt;Item&gt; の要素"]
+        G2["GreenHerb / RedHerb / Key"]
+        G3["参照がなくなれば自動解放"]
+    end
 
-この使い分けができるようになると、C# での安定したアプリケーション開発が可能になる。
+    subgraph idis["IDisposable が担当（明示的）"]
+        D1["ファイル"]
+        D2["ネットワーク接続"]
+        D3["using で明示的に解放"]
+    end
+
+    style gc fill:#e8f5e9,stroke:#2e7d32
+    style idis fill:#e3f2fd,stroke:#1565c0
+```
+
+このコースのアイテムクラスは GC 任せでよい。
+`IDisposable` が必要になるのは、外部リソースを直接持つクラスを作るときだ。
+
+---
 
 ## 7-11 設計の全体像（最終完成形）
 
@@ -276,6 +452,9 @@ sequenceDiagram
 classDiagram
     class Player {
         -List~Item~ inventory
+        -int hp
+        -int maxHp
+        -Condition condition
         +AddItem(Item item)
         +RemoveItem(int index) Item?
         +UseItem(int index)
@@ -306,22 +485,92 @@ classDiagram
     Item <|-- Key
 ```
 
+---
+
 ## 7-12 確認問題
 
-1. C# の `List<Item>` で、要素を追加・削除した際のオブジェクトの生存期間はどう決まるか。
+1. C# の `List<Item>` に `GreenHerb` を追加したとき、実体の型は何になるか。
+   「参照型」という言葉を使って説明せよ。
+
 2. GC があるのに `IDisposable` / `using` が必要になるのはどんなときか。
-3. `ItemBox.Retrieve()` 後に、呼び出し側で参照の扱いを意識すべき理由は何か。
+
+3. 次のコードの問題点を説明せよ。
+   ```csharp
+   var item = inventory[0];
+   itemBox.Store(item);
+   // inventory.RemoveAt(0) を呼ばずにそのままにしている
+   ```
+
+4. `ItemBox.Retrieve()` が `Item?`（nullable）を返す理由は何か。
+
+5. 次のコードで GreenHerb インスタンスは GC に回収されるか。理由も答えよ。
+   ```csharp
+   {
+       var herb = new GreenHerb();
+       player.AddItem(herb);
+   }
+   // スコープを抜けた後
+   ```
+
+---
 
 ## まとめ
 
-- 参照型と GC により、メモリ管理の多くが自動化されている
-- ただし、参照共有のルール（誰がそのオブジェクトを所有・管理するか）の設計は依然として重要
-- 外部リソースは `IDisposable` / `using` で適切に管理する
-- `Player` / `Item` / `ItemBox` を組み合わせた、柔軟なアイテム管理システムが完成した
+```mermaid
+mindmap
+    root((第7章まとめ))
+        参照型の特徴
+            List&lt;Item&gt; が自然に動く理由
+            実体はヒープ上に保持される
+            ポリモーフィズムが自然に機能する
+        GC
+            メモリを自動で管理
+            参照がなくなれば回収対象
+            開発者が明示的に解放しなくてよい
+        参照共有の注意
+            同じ実体を複数から参照できる
+            移動は取り出してから追加
+            設計ルールで制御する
+        IDisposable
+            外部リソース専用
+            using で自動 Dispose
+            ファイル・通信が対象
+        ItemBox
+            List&lt;Item&gt; で保持
+            Retrieve で取り出す
+            所在は常に1箇所にする
+```
+
+---
 
 ## コース全体の振り返り
 
 ```mermaid
 flowchart LR
-    C0["第0章<br/>ゴール確認"] --> C1["第1章<br/>Player / カプセル化"] --> C2["第2章<br/>責務分離"] --> C3["第3章<br/>Herb / 参照型"] --> C4["第4章<br/>List / インベントリ"] --> C5["第5章<br/>設計の限界"] --> C6["第6章<br/>ポリモーフィズム"] --> C7["第7章<br/>GC / IDisposable"]
+    C0["第0章<br/>ゴール確認"]
+    C1["第1章<br/>Player<br/>カプセル化"]
+    C2["第2章<br/>責務分離"]
+    C3["第3章<br/>Herb<br/>参照型"]
+    C4["第4章<br/>List<br/>インベントリ"]
+    C5["第5章<br/>設計の限界"]
+    C6["第6章<br/>ポリモーフィズム"]
+    C7["第7章<br/>GC / IDisposable<br/>ItemBox"]
+
+    C0 --> C1 --> C2 --> C3 --> C4 --> C5 --> C6 --> C7
+
+    style C0 fill:#4CAF50,color:#fff
+    style C7 fill:#1565C0,color:#fff
 ```
+
+| 章 | 習得した概念 |
+|:--:|---|
+| 第1章 | クラス、カプセル化、enum |
+| 第2章 | 責務分離、変更に強い設計 |
+| 第3章 | 参照型、class と struct の違い |
+| 第4章 | `List<T>`、インベントリの基本 |
+| 第5章 | 設計の限界を問いで発見する力 |
+| 第6章 | abstract class、override、ポリモーフィズム |
+| 第7章 | 参照型の仕組み、GC、IDisposable、ItemBox設計 |
+
+このコースで実装した「バイオ風ハーブ回復システム」は、
+C# のエッセンス ── **カプセル化・責務分離・多態性・参照型の理解** ── を全て含んでいる。
