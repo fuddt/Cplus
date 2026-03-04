@@ -2,127 +2,40 @@
 
 ---
 
-## 7-1 前章の残った問いから始める
+## 7-1 前章（6.5章）の振り返りと残った問い
 
-第6章の最後にこんな問いが残った。
+第6.5章で確認したこと。
 
-> 「`Item&`（参照）で統一的に使えることはわかった。
-> でも参照は `vector` に入れられない。どうやって `vector` で管理する？」
+- `vector<Item>` → オブジェクトスライシングで使えない
+- `vector<Item*>` → ポリモーフィズムは動くが、所有権が不明確・メモリリーク・二重解放のリスクがある
 
-単純に考えると `std::vector<Item>` とすれば良さそうだ。
-ところがここに、C++ 特有の落とし穴がある。
+残った問いはこれだ。
 
----
-
-## 7-2 `vector<Item>` がなぜダメか：オブジェクトスライシング
-
-`GreenHerb` は `Item` を継承している。
-だから `vector<Item>` に入れられそうに見える。
-
-```cpp
-std::vector<Item> inventory;
-GreenHerb greenHerb;
-inventory.push_back(greenHerb);  // コンパイルは通る
-```
-
-しかし、実際に何が起きているかを見よう。
-
-```plantuml
-@startuml
-title オブジェクトスライシングのメモリイメージ
-
-rectangle "GreenHerb オブジェクト（元）" {
-    rectangle "vtable*" as VT1 #lightblue
-    rectangle "healAmount = 30" as HA #lightgreen
-}
-
-rectangle "vector<Item>[0] スロット（コピー後）" {
-    rectangle "vtable*" as VT2 #lightblue
-    note right of VT2 : Item 分のサイズしかない
-}
-
-VT1 -down-> VT2 : コピーされる
-HA  -[dashed,#red]-> VT2 : ❌ 切り落とされる（スライシング）
-
-note bottom
-    healAmount が消えた Item が入っている
-    vtable も Item のものに上書きされる
-    → use() を呼んでも GreenHerb::use() は呼ばれない
-end note
-@enduml
-```
-
-**`vector<Item>` の各スロットは `Item` のサイズしか持てない。**
-`GreenHerb` を入れようとすると、`Item` 部分だけコピーされ、
-`healAmount` など派生クラス固有のデータは**切り落とされる（スライシング）**。
-
-これを **オブジェクトスライシング** と呼ぶ。
-
----
-
-## 7-3 解決策：ポインタで管理する
-
-スライシングが起きる原因は「値そのもの」を vector に格納しようとするからだ。
-**オブジェクトへのポインタ** を格納すれば、どのサイズのオブジェクトでも同じポインタサイズで扱える。
+> 「ポインタを使えば動く。
+> でも、**誰がオブジェクトを delete する責任を持つか** を明確にできないか？」
 
 ```mermaid
 flowchart LR
-    subgraph vector~Item ptr~["vector&lt;Item*&gt;"]
-        P0["[0] Item*"]
-        P1["[1] Item*"]
-        P2["[2] Item*"]
-    end
+    V2["vector&lt;Item*&gt;<br/>（生ポインタ）"]
+    V3["vector&lt;unique_ptr&lt;Item&gt;&gt;<br/>（スマートポインタ）"]
 
-    subgraph heap["ヒープ（実際のオブジェクト）"]
-        G["GreenHerb<br/>vtable*<br/>healAmount=30"]
-        R["RedHerb<br/>vtable*<br/>healAmount=60"]
-        K["Key<br/>vtable*<br/>keyId=Boss"]
-    end
+    P2["⚠️ ポリモーフィズムは動く<br/>所有権が不明確・リーク危険"]
+    P3["✅ ポリモーフィズムも動く<br/>所有権が明確・自動解放"]
 
-    P0 -->|"指す"| G
-    P1 -->|"指す"| R
-    P2 -->|"指す"| K
+    V2 --- P2
+    V3 --- P3
+
+    V2 -->|"この章で解決"| V3
+
+    style P2 fill:#fff8e1,stroke:#f57f17
+    style P3 fill:#e8f5e9,stroke:#2e7d32
 ```
 
-ポインタのサイズは一定（64bit環境で8バイト）。
-実際のオブジェクトはヒープ上に置き、ポインタ経由でアクセスする。
-
-vtable も正しく機能するので、`item->use(player)` で正しい実装が呼ばれる。
+これを解決するのが **`std::unique_ptr`**（スマートポインタ）だ。
 
 ---
 
-## 7-4 生ポインタ（raw pointer）の問題
-
-`Item*` をそのまま使うと、別の問題が起きる。
-
-```cpp
-std::vector<Item*> inventory;
-inventory.push_back(new GreenHerb());  // ヒープに確保
-inventory.push_back(new RedHerb());
-```
-
-```mermaid
-flowchart TD
-    A["vector&lt;Item*&gt; inventory が破棄される"]
-    B["ポインタ（アドレス値）は解放される"]
-    C["❌ ポインタが指していたオブジェクトは残ったまま"]
-    D["メモリリーク"]
-
-    A --> B --> C --> D
-
-    style C fill:#ffebee,stroke:#c62828
-    style D fill:#ffebee,stroke:#c62828
-```
-
-`vector` が破棄されるとき、格納していた `Item*`（アドレスの値）は消えるが、
-**ヒープ上のオブジェクト本体は誰も `delete` しない**。これがメモリリークだ。
-
-さらに、「誰がオブジェクトを delete する責任を持つか」がコードを読んでも分からない。
-これを **所有権が不明確** な状態という。
-
----
-
-## 7-5 `std::unique_ptr`：所有権を明確にするスマートポインタ
+## 7-2 `std::unique_ptr`：所有権を明確にするスマートポインタ
 
 `std::unique_ptr` は「オブジェクトを唯一所有するポインタ」だ。
 
@@ -151,7 +64,7 @@ flowchart LR
 
 ---
 
-## 7-6 所有権の状態遷移
+## 7-3 所有権の状態遷移
 
 ```mermaid
 stateDiagram-v2
@@ -182,7 +95,7 @@ flowchart LR
 
 ---
 
-## 7-7 `make_unique` と基本操作
+## 7-4 `make_unique` と基本操作
 
 ### オブジェクトの生成
 
@@ -214,7 +127,7 @@ auto other = std::move(herb);  // herb は nullptr に
 
 ---
 
-## 7-8 アイテムボックスの設計
+## 7-5 アイテムボックスの設計
 
 「預ける・引き出す」操作を通じて所有権の移譲を体験する。
 
@@ -269,7 +182,7 @@ classDiagram
 
 ---
 
-## 7-9 実装コード
+## 7-6 実装コード
 
 ### `Player.h`（最終版）
 
@@ -450,7 +363,7 @@ HP: 100/100  [Fine]   所持アイテム数: 0
 
 ---
 
-## 7-10 全体の処理シーケンス
+## 7-7 全体の処理シーケンス
 
 ```mermaid
 sequenceDiagram
@@ -477,7 +390,7 @@ sequenceDiagram
 
 ---
 
-## 7-11 `unique_ptr` をコピーしようとすると
+## 7-8 `unique_ptr` をコピーしようとすると
 
 ```cpp
 auto a = std::make_unique<GreenHerb>();
@@ -505,7 +418,7 @@ flowchart LR
 
 ---
 
-## 7-12 設計の全体像（最終完成形）
+## 7-9 設計の全体像（最終完成形）
 
 ```mermaid
 classDiagram
@@ -557,10 +470,10 @@ classDiagram
 
 ---
 
-## 7-13 確認問題
+## 7-10 確認問題
 
-1. `std::vector<Item>` に `GreenHerb` を入れると何が起きるか。
-   「オブジェクトスライシング」という言葉を使って説明せよ。
+1. `unique_ptr` が「コピー不可」に設計されている理由を説明せよ。
+   「二重 delete」「所有者は1人」という言葉を使うこと。
 
 2. 次のコードはメモリリークするか。理由も答えよ。
    ```cpp
@@ -588,16 +501,11 @@ classDiagram
 ```mermaid
 mindmap
     root((第7章まとめ))
-        オブジェクトスライシング
-            vector&lt;Item&gt; はダメ
-            ポインタで管理する
-        生ポインタの問題
-            所有権が不明確
-            メモリリークのリスク
         unique_ptr
             唯一の所有者
             スコープ終了で自動 delete
             RAII の実践
+            コピー不可・移譲のみ
         make_unique
             new の代わり
             例外安全
@@ -607,6 +515,7 @@ mindmap
         所有権設計
             誰が持つか明確にする
             アイテムボックスで体験
+            Player ↔ ItemBox 間の移譲
 ```
 
 ---
@@ -622,11 +531,13 @@ flowchart LR
     C4["第4章<br/>インベントリ<br/>vector"]
     C5["第5章<br/>設計の限界<br/>問題発見"]
     C6["第6章<br/>ポリモーフィズム<br/>仮想関数"]
+    C65["第6.5章<br/>抽象クラスと<br/>inventory設計"]
     C7["第7章<br/>所有権<br/>unique_ptr"]
 
-    C0 --> C1 --> C2 --> C3 --> C4 --> C5 --> C6 --> C7
+    C0 --> C1 --> C2 --> C3 --> C4 --> C5 --> C6 --> C65 --> C7
 
     style C0 fill:#4CAF50,color:#fff
+    style C65 fill:#FF9800,color:#fff
     style C7 fill:#9C27B0,color:#fff
 ```
 
@@ -638,6 +549,7 @@ flowchart LR
 | 第4章 | `std::vector`、イテレータ、`*this`|
 | 第5章 | 設計の限界を問いで発見する力 |
 | 第6章 | 継承、仮想関数、ポリモーフィズム、vtable |
+| 第6.5章 | 抽象クラス、オブジェクトスライシング、生ポインタの問題 |
 | 第7章 | スマートポインタ、所有権、`std::move`|
 
 このコースで実装した「バイオ風ハーブ回復システム」は、
