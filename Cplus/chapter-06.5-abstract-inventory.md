@@ -88,7 +88,8 @@ flowchart LR
 
 ## 6.5-3 Item / GreenHerb の継承関係
 
-継承によって `GreenHerb` は `Item` の「約束」を引き受ける。
+継承によって `Herb` は `Item` の「約束」を引き受ける。
+そして `GreenHerb` / `RedHerb` は `Herb` の一種として表現できる（`Item → Herb → GreenHerb` という多段継承）。
 
 ```mermaid
 classDiagram
@@ -97,26 +98,25 @@ classDiagram
         +use(Player player)*
         +~Item()
     }
-    class GreenHerb {
-        -int healAmount = 30
+    class Herb {
+        -int healAmount
         +use(Player player)
     }
-    class RedHerb {
-        -int healAmount = 60
-        +use(Player player)
-    }
+    class GreenHerb
+    class RedHerb
     class Key {
         -string keyId
         +use(Player player)
     }
 
-    Item <|-- GreenHerb : is-a（Itemの一種）
-    Item <|-- RedHerb   : is-a
+    Item <|-- Herb      : is-a（Itemの一種）
+    Herb <|-- GreenHerb : is-a（Herbの一種）
+    Herb <|-- RedHerb   : is-a（Herbの一種）
     Item <|-- Key       : is-a
 ```
 
-`GreenHerb` は `Item` の一種（is-a 関係）だ。
-`use()` の実装を提供しているので、インスタンス化できる。
+`GreenHerb` は `Item` の一種（is-a 関係）だ（`Herb` を経由しているだけ）。
+`use()` の実装は `Herb` に集約できるので、`GreenHerb` は「初期化だけ」のクラスにできる。
 
 **メモリ上のオブジェクトレイアウト：**
 
@@ -125,13 +125,13 @@ classDiagram
 │  GreenHerb オブジェクト（スタックorヒープ）     │
 ├─────────────────────────────────────────────────┤
 │  vtable*  ─────────────────────→  GreenHerb の vtable
-│                                       use → GreenHerb::use()
+│                                       use → Herb::use()
 │                                       ~GreenHerb → ...
 ├─────────────────────────────────────────────────┤
-│  healAmount = 30  （GreenHerb 固有のデータ）    │
+│  healAmount = 30  （Herb 側のデータ）           │
 └─────────────────────────────────────────────────┘
  ↑ここまでが Item 部分（継承した領域）
- ↑healAmount から下が GreenHerb 固有部分
+ ↑healAmount から下が Herb 側の領域（GreenHerb はここに値を設定するだけ）
 ```
 
 ---
@@ -574,15 +574,13 @@ classDiagram
         +~Item()
     }
 
-    class GreenHerb {
-        -int healAmount = 30
+    class Herb {
+        -int healAmount
         +use(Player player)
     }
 
-    class RedHerb {
-        -int healAmount = 60
-        +use(Player player)
-    }
+    class GreenHerb
+    class RedHerb
 
     class Key {
         -string keyId
@@ -590,8 +588,9 @@ classDiagram
     }
 
     Player --> Item : "Item* で管理（⚠️ 所有権が不明確）"
-    Item <|-- GreenHerb
-    Item <|-- RedHerb
+    Item <|-- Herb
+    Herb <|-- GreenHerb
+    Herb <|-- RedHerb
     Item <|-- Key
 ```
 
@@ -606,7 +605,7 @@ classDiagram
    Item item;
    ```
 
-2. 次のコードを実行すると `GreenHerb::use()` は正しく呼ばれるか？　理由も答えよ。
+2. 次のコードを実行すると `use()` は（本来期待する形で）正しく呼ばれるか？　理由も答えよ。
    ```cpp
    std::vector<Item> inventory;
    GreenHerb g;

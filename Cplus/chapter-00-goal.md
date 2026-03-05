@@ -42,24 +42,23 @@ classDiagram
         +use(Player player)*
     }
 
-    class GreenHerb {
-        -int healAmount = 30
+    class Herb {
+        -int healAmount
         +use(Player player)
     }
 
-    class RedHerb {
-        -int healAmount = 60
-        +use(Player player)
-    }
+    class GreenHerb
+    class RedHerb
 
     class Key {
         -string keyId
         +use(Player player)
     }
 
-    Item <|-- GreenHerb : 継承
-    Item <|-- RedHerb   : 継承
-    Item <|-- Key        : 継承
+    Item <|-- Herb      : 継承
+    Herb <|-- GreenHerb : 継承
+    Herb <|-- RedHerb   : 継承
+    Item <|-- Key       : 継承
     Player "1" o-- "*" Item : inventory（持ち物）
 ```
 

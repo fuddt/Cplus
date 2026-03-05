@@ -22,6 +22,8 @@ public abstract class Item
 ```
 
 `Player` は `List<Item>` を持てば、`GreenHerb` / `RedHerb` / `Key` を一緒に管理できる。
+さらに回復アイテム（Herb 系）は共通のロジックが多いので、**中間クラス `Herb`** にまとめると重複を減らせる。
+（第3章で作った `Herb` は、この章で「`Item` を継承する `Herb`」として作り直すイメージ）
 
 ```mermaid
 classDiagram
@@ -29,12 +31,17 @@ classDiagram
         <<abstract>>
         +Use(Player player)*
     }
+    class Herb {
+        -int healAmount
+        +Use(Player player)
+    }
     class GreenHerb
     class RedHerb
     class Key
 
-    Item <|-- GreenHerb
-    Item <|-- RedHerb
+    Item <|-- Herb
+    Herb <|-- GreenHerb
+    Herb <|-- RedHerb
     Item <|-- Key
 ```
 
@@ -63,7 +70,8 @@ flowchart LR
 ## 6-4 動的ディパスッチのイメージ
 
 `Item item = new GreenHerb();`
-として `item.Use(player)` を呼ぶと、実行時に `GreenHerb.Use()` が呼ばれる。
+として `item.Use(player)` を呼ぶと、実行時に「実体が GreenHerb かどうか」が解決され、対応する `Use()` が呼ばれる。
+（この章の設計では、回復ロジックは `Herb.Use()` に集約される）
 
 ```mermaid
 sequenceDiagram
@@ -80,11 +88,11 @@ sequenceDiagram
 ## 6-5 継承と `override` の書き方
 
 ```csharp
-public class GreenHerb : Item
+public class Herb : Item
 {
     private readonly int healAmount;
 
-    public GreenHerb(int healAmount = 30)
+    protected Herb(int healAmount)
     {
         this.healAmount = healAmount;
     }
@@ -93,6 +101,11 @@ public class GreenHerb : Item
     {
         player.Heal(healAmount);
     }
+}
+
+public sealed class GreenHerb : Herb
+{
+    public GreenHerb() : base(30) { }
 }
 ```
 
@@ -149,14 +162,14 @@ public abstract class Item
 }
 ```
 
-### `GreenHerb.cs`
+### `Herb.cs`
 
 ```csharp
-public class GreenHerb : Item
+public class Herb : Item
 {
     private readonly int healAmount;
 
-    public GreenHerb(int healAmount = 30)
+    protected Herb(int healAmount)
     {
         this.healAmount = healAmount;
     }
@@ -168,22 +181,21 @@ public class GreenHerb : Item
 }
 ```
 
+### `GreenHerb.cs`
+
+```csharp
+public sealed class GreenHerb : Herb
+{
+    public GreenHerb() : base(30) { }
+}
+```
+
 ### `RedHerb.cs`
 
 ```csharp
-public class RedHerb : Item
+public sealed class RedHerb : Herb
 {
-    private readonly int healAmount;
-
-    public RedHerb(int healAmount = 60)
-    {
-        this.healAmount = healAmount;
-    }
-
-    public override void Use(Player player)
-    {
-        player.Heal(healAmount);
-    }
+    public RedHerb() : base(60) { }
 }
 ```
 
@@ -309,13 +321,15 @@ classDiagram
         +Use(Player player)*
     }
 
+    class Herb
     class GreenHerb
     class RedHerb
     class Key
 
     Player --> Item : uses
-    Item <|-- GreenHerb
-    Item <|-- RedHerb
+    Item <|-- Herb
+    Herb <|-- GreenHerb
+    Herb <|-- RedHerb
     Item <|-- Key
 ```
 

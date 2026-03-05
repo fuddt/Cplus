@@ -126,12 +126,14 @@ classDiagram
         <<abstract>>
         +Use(Player player)*
     }
+    class Herb
     class GreenHerb
     class RedHerb
     class Key
 
-    Item <|-- GreenHerb
-    Item <|-- RedHerb
+    Item <|-- Herb
+    Herb <|-- GreenHerb
+    Herb <|-- RedHerb
     Item <|-- Key
 ```
 

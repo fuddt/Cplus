@@ -190,7 +190,7 @@ classDiagram
 #pragma once
 #include <vector>
 #include <memory>
-#include "Item.h"
+#include "Item/Item.h"
 
 enum class Condition { Fine, Caution, Danger };
 
@@ -254,7 +254,7 @@ int Player::itemCount() const {
 #pragma once
 #include <vector>
 #include <memory>
-#include "Item.h"
+#include "Item/Item.h"
 
 class ItemBox {
 public:
@@ -294,11 +294,11 @@ int ItemBox::getCount() const {
 
 ```cpp
 #include <iostream>
+#include <string>
 #include "Player.h"
 #include "ItemBox.h"
-#include "GreenHerb.h"
-#include "RedHerb.h"
-#include "Key.h"
+#include "Item/Herb/Herb.h"
+#include "Item/Key/Key.h"
 
 std::string conditionName(Condition c) {
     switch (c) {
@@ -368,15 +368,15 @@ HP: 100/100  [Fine]   所持アイテム数: 0
 ```mermaid
 sequenceDiagram
     participant main
-    participant box as ItemBox
+    participant itemBox as ItemBox
     participant player as Player
     participant herb as GreenHerb（ヒープ）
 
-    main  ->> box    : store(make_unique&lt;GreenHerb&gt;())
-    note right of box : box が所有
+    main  ->> itemBox    : store(make_unique&lt;GreenHerb&gt;())
+    note right of itemBox : itemBox が所有
 
-    main  ->> box    : retrieve(0)
-    box   -->> main  : unique_ptr（所有権を返す）
+    main  ->> itemBox    : retrieve(0)
+    itemBox   -->> main  : unique_ptr（所有権を返す）
     main  ->> player : addItem(std::move(item))
     note right of player : player が所有
 
@@ -446,23 +446,22 @@ classDiagram
         +~Item()
     }
 
-    class GreenHerb {
-        -int healAmount = 30
+    class Herb {
+        -int healAmount
         +use(Player player)
     }
 
-    class RedHerb {
-        -int healAmount = 60
-        +use(Player player)
-    }
+    class GreenHerb
+    class RedHerb
 
     class Key {
         -string keyId
         +use(Player player)
     }
 
-    Item <|-- GreenHerb
-    Item <|-- RedHerb
+    Item <|-- Herb
+    Herb <|-- GreenHerb
+    Herb <|-- RedHerb
     Item <|-- Key
     Player "1" o-- "*" Item
     ItemBox "1" o-- "*" Item

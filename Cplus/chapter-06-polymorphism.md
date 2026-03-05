@@ -35,14 +35,23 @@ flowchart LR
 この「共通の約束」を表すクラスを作る。
 
 ```cpp
+// （今回の実装では表示用に name / description も持たせる）
+// ※ ポリモーフィズムの本質は virtual use() のほう
+
+// Item.h
+#include <string>
+
+class Player;
+
 class Item {
 public:
+    Item(std::string name, std::string description);
     virtual void use(Player& player) = 0;
     virtual ~Item() = default;
 };
 ```
 
-2行しかない。でもこれが全体の設計を支える土台になる。
+中身が少ないクラスに見えるが、これが全体の設計を支える土台になる。
 
 ```mermaid
 classDiagram
@@ -52,14 +61,15 @@ classDiagram
         +~Item()
     }
 
-    class GreenHerb {
-        -int healAmount = 30
+    class Herb {
+        -int healAmount
         +use(Player player)
     }
 
+    class GreenHerb {
+    }
+
     class RedHerb {
-        -int healAmount = 60
-        +use(Player player)
     }
 
     class Key {
@@ -67,13 +77,16 @@ classDiagram
         +use(Player player)
     }
 
-    Item <|-- GreenHerb : 継承
-    Item <|-- RedHerb   : 継承
-    Item <|-- Key        : 継承
+    Item <|-- Herb      : 継承
+    Herb <|-- GreenHerb : 継承
+    Herb <|-- RedHerb   : 継承
+    Item <|-- Key       : 継承
 ```
 
 `<<abstract>>` は「直接オブジェクトを作れないクラス」を意味する。
 `*` は「純粋仮想関数（派生クラスで必ず実装する）」を表している。
+
+（第3章で作った `Herb` は、この章で「`Item` を継承する `Herb`」として作り直すイメージ）
 
 ---
 
@@ -95,7 +108,7 @@ flowchart TB
     subgraph virtualあり["virtual あり（動的束縛）"]
         A2["Item& item = greenHerb"]
         B2["item.use(player) を呼ぶ"]
-        C2["実行時に「実際の型」を確認<br/>→ GreenHerb::use() を呼ぶ ✅"]
+        C2["実行時に「実際の型」を確認<br/>→ Herb::use() を呼ぶ ✅<br/>（GreenHerb は Herb::use を継承）"]
         A2 --> B2 --> C2
     end
 ```
@@ -136,14 +149,14 @@ flowchart LR
         GH["vtable へのポインタ →"]
     end
     subgraph GreenHerb vtable
-        GHV["use → GreenHerb::use()"]
+        GHV["use → Herb::use()"]
     end
 
     subgraph RedHerb オブジェクト
         RH["vtable へのポインタ →"]
     end
     subgraph RedHerb vtable
-        RHV["use → RedHerb::use()"]
+        RHV["use → Herb::use()"]
     end
 
     subgraph Key オブジェクト
@@ -178,27 +191,25 @@ abstract class Item {
     + ~Item()
 }
 
-class GreenHerb {
-    - healAmount : int = 30
+class Herb {
+    - healAmount : int
     + use(Player& player) : void
 }
 
-class RedHerb {
-    - healAmount : int = 60
-    + use(Player& player) : void
-}
+class GreenHerb
+class RedHerb
 
 class Key {
     - keyId : string
     + use(Player& player) : void
 }
 
-Item <|-- GreenHerb
-Item <|-- RedHerb
+Item <|-- Herb
+Herb <|-- GreenHerb
+Herb <|-- RedHerb
 Item <|-- Key
 
-note right of GreenHerb : player.heal(30)
-note right of RedHerb   : player.heal(60)
+note right of Herb : player.heal(healAmount)
 note right of Key        : 扉を開ける処理
 @enduml
 ```
@@ -206,11 +217,17 @@ note right of Key        : 扉を開ける処理
 各派生クラスで `override` キーワードを使う。
 
 ```cpp
-class GreenHerb : public Item {
+class Herb : public Item {
 public:
+    Herb(std::string name, std::string description, int healAmount);
     void use(Player& player) override;  // ← override を必ずつける
 private:
-    int healAmount = 30;
+    int healAmount_;
+};
+
+class GreenHerb : public Herb {
+public:
+    GreenHerb();  // 初期化だけ（必要なら use() を override してもOK）
 };
 ```
 
@@ -326,94 +343,101 @@ flowchart TB
 
 ## 6-9 実装コード
 
-### `Item.h`
+### `Item/Item.h`
 
 ```cpp
 #pragma once
+#include <string>
+#include <utility>
 
 class Player;
 
 class Item {
 public:
+    Item(std::string name, std::string description)
+        : name_(std::move(name)), description_(std::move(description)) {}
+
     virtual void use(Player& player) = 0;
     virtual ~Item() = default;
+
+protected:
+    std::string name_;
+    std::string description_;
 };
 ```
 
-### `GreenHerb.h`
-
-```cpp
-#pragma once
-#include "Item.h"
-
-class GreenHerb : public Item {
-public:
-    void use(Player& player) override;
-private:
-    int healAmount = 30;
-};
-```
-
-### `GreenHerb.cpp`
-
-```cpp
-#include "GreenHerb.h"
-#include "Player.h"
-
-void GreenHerb::use(Player& player) {
-    player.heal(healAmount);
-}
-```
-
-### `RedHerb.h`
-
-```cpp
-#pragma once
-#include "Item.h"
-
-class RedHerb : public Item {
-public:
-    void use(Player& player) override;
-private:
-    int healAmount = 60;
-};
-```
-
-### `RedHerb.cpp`
-
-```cpp
-#include "RedHerb.h"
-#include "Player.h"
-
-void RedHerb::use(Player& player) {
-    player.heal(healAmount);
-}
-```
-
-### `Key.h`
+### `Item/Herb/Herb.h`
 
 ```cpp
 #pragma once
 #include <string>
-#include "Item.h"
+#include <utility>
 
-class Key : public Item {
+#include "Item/Item.h"
+
+class Herb : public Item {
 public:
-    explicit Key(std::string id) : keyId(std::move(id)) {}
+    Herb(std::string name, std::string description, int healAmount)
+        : Item(std::move(name), std::move(description)), healAmount_(healAmount) {}
+
     void use(Player& player) override;
 private:
-    std::string keyId;
+    int healAmount_;
+};
+
+class GreenHerb : public Herb {
+public:
+    GreenHerb() : Herb("Green Herb", "少量の体力を回復", 30) {}
+};
+
+class RedHerb : public Herb {
+public:
+    RedHerb() : Herb("Red Herb", "中程度の体力を回復", 60) {}
 };
 ```
 
-### `Key.cpp`
+### `Item/Herb/Herb.cpp`
 
 ```cpp
-#include "Key.h"
-#include <iostream>
+#include "Herb.h"
+#include "Player.h"
 
-void Key::use(Player& /* player */) {
-    std::cout << "[" << keyId << "] を使った。扉が開いた。" << std::endl;
+void Herb::use(Player& player) {
+    player.heal(healAmount_);
+}
+```
+
+### `Item/Key/Key.h`
+
+```cpp
+#pragma once
+#include <string>
+
+#include "Item/Item.h"
+
+class Key : public Item {
+public:
+    explicit Key(std::string keyId);
+    void use(Player& player) override;
+
+private:
+    std::string keyId_;
+};
+```
+
+### `Item/Key/Key.cpp`
+
+```cpp
+#include <iostream>
+#include <utility>
+
+#include "Key.h"
+
+Key::Key(std::string keyId)
+    : Item("Key", "扉を開ける鍵"), keyId_(std::move(keyId)) {}
+
+void Key::use(Player& /*player*/) {
+    std::cout << "[" << keyId_ << "] を使った。扉が開いた。" << std::endl;
 }
 ```
 
@@ -421,10 +445,10 @@ void Key::use(Player& /* player */) {
 
 ```cpp
 #include <iostream>
+#include <string>
 #include "Player.h"
-#include "GreenHerb.h"
-#include "RedHerb.h"
-#include "Key.h"
+#include "Item/Herb/Herb.h"
+#include "Item/Key/Key.h"
 
 std::string conditionName(Condition c) {
     switch (c) {
@@ -488,15 +512,13 @@ classDiagram
         +~Item()
     }
 
-    class GreenHerb {
-        -int healAmount = 30
+    class Herb {
+        -int healAmount
         +use(Player player)
     }
 
-    class RedHerb {
-        -int healAmount = 60
-        +use(Player player)
-    }
+    class GreenHerb
+    class RedHerb
 
     class Key {
         -string keyId
@@ -513,11 +535,12 @@ classDiagram
         +getCondition() Condition
     }
 
-    Item <|-- GreenHerb
-    Item <|-- RedHerb
+    Item <|-- Herb
+    Herb <|-- GreenHerb
+    Herb <|-- RedHerb
     Item <|-- Key
-    GreenHerb ..> Player : heal() を呼ぶ
-    RedHerb   ..> Player : heal() を呼ぶ
+
+    Herb ..> Player : heal() を呼ぶ
 ```
 
 ---

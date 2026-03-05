@@ -320,20 +320,20 @@ classDiagram
         +use(Player player)*
     }
 
-    class GreenHerb {
+    class Herb {
         +use(Player player)
     }
 
-    class RedHerb {
-        +use(Player player)
-    }
+    class GreenHerb
+    class RedHerb
 
     class Key {
         +use(Player player)
     }
 
-    Item <|-- GreenHerb
-    Item <|-- RedHerb
+    Item <|-- Herb
+    Herb <|-- GreenHerb
+    Herb <|-- RedHerb
     Item <|-- Key
 
     note for Item "「use()を持つもの」<br/>という共通の型を定義"
