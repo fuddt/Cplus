@@ -1,3 +1,50 @@
-docs
+docs/
+
+# OS / editor
 .DS_Store
-.idea
+.idea/
+.vs/
+*.swp
+*.swo
+
+# CMake
+build/
+build-*/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+CTestTestfile.cmake
+cmake_install.cmake
+install_manifest.txt
+Makefile
+
+# Visual Studio
+*.sln.docstates
+*.VC.db
+*.VC.opendb
+*.vcxproj.user
+*.user
+*.ipch
+.vsconfig
+[Dd]ebug/
+[Rr]elease/
+[Xx]64/
+[Xx]86/
+[Aa][Rr][Mm]64/
+
+# Binaries / intermediates
+*.obj
+*.o
+*.lo
+*.out
+*.exe
+*.dll
+*.so
+*.dylib
+*.lib
+*.a
+*.pdb
+*.ilk
+*.idb
+*.exp
