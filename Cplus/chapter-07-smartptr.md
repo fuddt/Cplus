@@ -70,11 +70,11 @@ flowchart LR
 stateDiagram-v2
     direction LR
 
-    [*] --> 所有中 : make_unique&lt;T&gt;() で作成
+    [*] --> 所有中 : make_unique() で作成
     所有中 --> 移譲済み : std::move() で手放す
     移譲済み --> 所有中 : 受け取り側が所有
-    所有中 --> [*] : スコープ終了 or reset()<br/>→ オブジェクト自動 delete
-    移譲済み --> [*] : nullptr のまま破棄<br/>（何も delete しない）
+    所有中 --> [*] : スコープ終了 or reset() → 自動 delete
+    移譲済み --> [*] : nullptr のまま破棄（delete なし）
 ```
 
 `std::move` は「所有権の引き渡し」だ。

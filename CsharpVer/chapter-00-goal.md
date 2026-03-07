@@ -60,6 +60,76 @@ sequenceDiagram
     Herb-->>Game: 完了
 ```
 
+## 最終プログラムの全体シーケンス
+
+```mermaid
+sequenceDiagram
+    participant P as Program
+    participant Box as ItemBox
+    participant Player
+    participant item as Item（GreenHerb / RedHerb）
+
+    P->>Box: Store(new GreenHerb())
+    P->>Box: Store(new RedHerb())
+    P->>Box: Store(new Key("ボスルームの鍵"))
+    Note over Box: 3アイテム保管中
+
+    P->>Box: Retrieve(0)
+    Box-->>P: GreenHerb
+    P->>Player: AddItem(GreenHerb)
+
+    P->>Box: Retrieve(0)
+    Box-->>P: RedHerb
+    P->>Player: AddItem(RedHerb)
+    Note over Box: Key のみ残る（1個）
+
+    P->>Player: Damage(80)
+    Player->>Player: HP: 100 → 20 / UpdateCondition()
+    Note over Player: HP: 20/100 [Danger]
+
+    P->>Player: UseItem(0)
+    activate Player
+    Player->>item: Use(player)
+    item->>Player: Heal(30)
+    Player->>Player: HP: 20 → 50 / UpdateCondition()
+    deactivate Player
+    Note over Player: HP: 50/100 [Caution]
+
+    P->>Player: UseItem(0)
+    activate Player
+    Player->>item: Use(player)
+    item->>Player: Heal(50)
+    Player->>Player: HP: 50 → 100 / UpdateCondition()
+    deactivate Player
+    Note over Player: HP: 100/100 [Fine]
+```
+
+## 最終プログラムのアクティビティ図
+
+```mermaid
+flowchart TD
+    S([開始]) --> Init["Player・ItemBox を生成"]
+    Init --> Store["ItemBox にアイテムを保管<br/>GreenHerb / RedHerb / Key"]
+    Store --> Retrieve["GreenHerb・RedHerb を<br/>インベントリへ移す"]
+    Retrieve --> PrintBox["ボックス残数を表示<br/>（Key のみ残る）"]
+    PrintBox --> Dmg["Damage(80) → HP: 20"]
+    Dmg --> C1{HP 比率 ≤ 0.33？}
+    C1 -->|はい| D1["Condition: Danger"]
+    D1 --> U1["UseItem(0)<br/>GreenHerb.Use(player)"]
+    U1 --> H1["Heal(30) → HP: 50"]
+    H1 --> C2{HP 比率 > 0.67？}
+    C2 -->|いいえ| D2["Condition: Caution"]
+    D2 --> U2["UseItem(0)<br/>RedHerb.Use(player)"]
+    U2 --> H2["Heal(50) → HP: 100"]
+    H2 --> C3{HP 比率 > 0.67？}
+    C3 -->|はい| D3["Condition: Fine ✅"]
+    D3 --> End([終了])
+
+    style D1 fill:#ffebee,stroke:#c62828
+    style D2 fill:#fff8e1,stroke:#f57f17
+    style D3 fill:#e8f5e9,stroke:#2e7d32
+```
+
 ## 学習ロードマップ
 
 ```mermaid
