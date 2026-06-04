@@ -55,3 +55,263 @@ Format-Hex は手軽で強力なツールですが、解析を進める上で以
    Format-Hex は、データをPowerShellのオブジェクトとして処理します。そのため、数百メガバイト（MB）を超える巨大なファイルを一度にダンプしようとすると、メモリ消費量が急増し、動作が著しく重くなる、あるいはPowerShellがフリーズする原因となります。大容量ファイルを扱う場合は、前述の -Count や -Offset パラメータを組み合わせ、必要なセクションのみを細切れに抽出して解析するのが合理的です。
  * **パイプライン処理のオーバーヘッド**
    PowerShellの特性上、テキストストリームではなく「オブジェクト」がパイプラインを流れます。そのため、Linuxの hexdump や xxd といったC言語ベースのネイティブツールと比較すると、処理速度の面で劣ります。数ギガバイト単位のバイナリを頻繁に全量ダンプするような用途では、標準機能にこだわり続けるよりも、専用ツールの導入を検討すべきケースもあります。
+
+
+```
+
+それ、かなり強いサインです。
+C側で 3840 × 1860 個のU16を書いたつもりなのに、Pythonで height × width × 2 個のuint16として読めてしまうなら、C側で想定の2倍のデータを書いている可能性が高いです。
+
+まず前提をはっきりさせます。
+
+本来こうなるはず
+
+C側で本当に、
+
+fwrite(data, sizeof(U16), 3840 * 1860, fp);
+
+としているなら、出るファイルサイズは、
+
+3840 × 1860 × 2 byte
+= 14,284,800 byte
+
+です。
+
+Pythonではこう読めるはずです。
+
+import numpy as np
+WIDTH = 3840
+HEIGHT = 1860
+arr = np.fromfile("shade.bin", dtype=np.uint16)
+print(arr.size)              # 7142400 のはず
+print(WIDTH * HEIGHT)        # 7142400 のはず
+img = arr.reshape(HEIGHT, WIDTH)
+
+dtype=np.uint16 で読んだとき、reshape(1860, 3840) できるのが正常です。
+
+⸻
+
+でも height × width × 2 が必要なら
+
+Python側で、
+
+arr.reshape(1860, 3840 * 2)
+
+または、
+
+arr.reshape(1860 * 2, 3840)
+
+みたいにしないと合わないなら、uint16 要素数が本来の2倍あります。
+
+つまり、ファイルサイズがたぶんこうなっています。
+
+3840 × 1860 × 2 × 2 byte
+= 28,569,600 byte
+
+このサイズは、U32画像 3840×1860 と同じです。
+
+3840 × 1860 × 4 byte
+= 28,569,600 byte
+
+つまり、かなり怪しいのはこれです。
+
+U16を書いているつもりだが、
+実際にはU32相当のサイズで書き出している
+
+または、
+
+fwriteの第2引数と第3引数の組み合わせで、
+sizeof(U16)を二重に掛けている
+
+⸻
+
+一番ありそうなミス
+
+ミス1：第3引数にbyte数を入れている
+
+fwrite はこうです。
+
+fwrite(データ先頭, 1要素のサイズ, 要素数, ファイル);
+
+だから、U16を 3840 × 1860 個書くなら、
+
+fwrite(data, sizeof(U16), width * height, fp);
+
+です。
+
+でも、もしこうしていたらダメです。
+
+fwrite(data, sizeof(U16), width * height * sizeof(U16), fp);
+
+これは、意味としては、
+
+2byte の要素を
+width × height × 2 個 書く
+
+です。
+
+結果、
+
+width × height × 4 byte
+
+出ます。
+
+つまり、2倍多く出る。
+
+これが今の症状とかなり一致します。
+
+⸻
+
+ミス2：lineSpanBytesを要素数として渡している
+
+例えば、
+
+lineSpanBytes = 3840 * sizeof(U16); // 7680
+
+だったとします。
+
+これをU16要素数として使って、
+
+fwrite(row, sizeof(U16), lineSpanBytes, fp);
+
+とすると危険です。
+
+これは、
+
+2byte の要素を 7680 個 書く
+= 15360 byte
+
+になります。
+
+本当は1行あたり、
+
+3840個 × 2byte = 7680 byte
+
+でいいのに、倍の15360byteを書いています。
+
+正しくはどちらかです。
+
+byte数で書くなら
+
+fwrite(row, 1, lineSpanBytes, fp);
+
+U16要素数で書くなら
+
+int lineSpanElements = lineSpanBytes / sizeof(U16);
+fwrite(row, sizeof(U16), lineSpanElements, fp);
+
+この2つは同じ結果になります。
+
+⸻
+
+まず確認するべきこと
+
+Pythonでこれを見てください。
+
+from pathlib import Path
+import numpy as np
+path = Path("shade.bin")
+file_size = path.stat().st_size
+print("file size =", file_size)
+WIDTH = 3840
+HEIGHT = 1860
+expected_u16 = WIDTH * HEIGHT * 2
+expected_u32 = WIDTH * HEIGHT * 4
+print("expected U16 size =", expected_u16)
+print("expected U32 size =", expected_u32)
+arr = np.fromfile(path, dtype=np.uint16)
+print("uint16 elements =", arr.size)
+print("expected elements =", WIDTH * HEIGHT)
+
+結果の見方はこうです。
+
+file size = 14,284,800
+→ U16 3840×1860 として正常
+file size = 28,569,600
+→ 2倍出ている。U32相当、または fwrite指定ミス
+
+⸻
+
+C側の正しい書き方
+
+全体を一発で書く場合
+
+const int width = 3840;
+const int height = 1860;
+const size_t count =
+    static_cast<size_t>(width) * static_cast<size_t>(height);
+fwrite(
+    data,
+    sizeof(U16),
+    count,
+    fp
+);
+
+これでファイルサイズは、
+
+width × height × 2
+
+です。
+
+⸻
+
+lineSpanBytesを使う場合
+
+const int height = 1860;
+const int lineSpanBytes = 3840 * sizeof(U16); // 7680
+fwrite(
+    data,
+    1,
+    static_cast<size_t>(height) * lineSpanBytes,
+    fp
+);
+
+これでもOKです。
+
+ただし、この場合は第2引数を 1 にします。
+第3引数はbyte数です。
+
+⸻
+
+たぶん今のC側はこうなっている可能性が高い
+
+おそらく、どこかでこういう形になっていませんか？
+
+fwrite(data, sizeof(U16), width * height * sizeof(U16), fp);
+
+または行ごとに、
+
+fwrite(row, sizeof(U16), lineSpanBytes, fp);
+
+このどちらかだと、ちょうど2倍のファイルサイズになります。
+
+⸻
+
+結論
+
+あなたの状況は、かなり高確率でこれです。
+
+Python側のreshape問題ではなく、
+C側のfwriteで書き出す量が2倍になっている。
+
+dtype=np.uint16 で height × width × 2 が必要になるなら、ファイル内のuint16要素が本来の2倍あります。
+
+まず見るべきはC側の fwrite の第2・第3引数です。
+
+正解はどちらかです。
+
+// U16の個数で書く
+fwrite(data, sizeof(U16), width * height, fp);
+
+または、
+
+// byte数で書く
+fwrite(data, 1, width * height * sizeof(U16), fp);
+
+この2つを混ぜて、
+
+fwrite(data, sizeof(U16), width * height * sizeof(U16), fp);
+
+にすると、2倍出ます。
+
+```
