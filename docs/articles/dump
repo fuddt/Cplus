@@ -314,4 +314,432 @@ fwrite(data, sizeof(U16), width * height * sizeof(U16), fp);
 
 にすると、2倍出ます。
 
+
+
+
+
+
+
+うん、ここは前のシェーディングより難しい。
+
+理由はこれです。
+
+シェーディング:
+uint8 の大きな連続バイト列
+→ 1000 byte くらい抜き出して一致検索しやすい
+欠陥画素:
+PixelTable[tableSize]
+その1要素が struct { uint16 x; uint16 y; }
+→ 「値の並び」が x,y,x,y,x,y... になる
+
+つまり、欠陥画素テーブルは 画像のような面データではなく、座標リスト です。
+
+⸻
+
+まず構造をバイト列にするとどうなるか
+
+仮にこういう構造体だとします。
+
+struct DefectivePixel
+{
+    uint16_t x;
+    uint16_t y;
+};
+DefectivePixel pixelTable[200];
+
+この場合、メモリ上はたぶんこう並びます。
+
+table[0].x  2byte
+table[0].y  2byte
+table[1].x  2byte
+table[1].y  2byte
+table[2].x  2byte
+table[2].y  2byte
+...
+
+つまり、1要素は基本的に、
+
+x 2byte + y 2byte = 4byte
+
+です。
+
+もし x=100, y=200 なら、リトルエンディアン環境ではバイト列はこうなります。
+
+x=100 → 0x0064 → 64 00
+y=200 → 0x00C8 → C8 00
+struct全体:
+64 00 C8 00
+
+だから、前みたいに「1000バイト一致検索」ではなく、
+
+x,y の uint16 ペア列を探す
+
+になります。
+
+⸻
+
+探し方の基本方針
+
+やり方は3段階です。
+
+1. 既知の欠陥画素テーブルを構造体としてバイト列化する
+2. キャリブレーション全体のbinから、そのバイト列を検索する
+3. 見つかったoffsetから、前後をuint16のx,yペアとして読む
+
+ただし、欠陥画素テーブルは count や padding を含む可能性があるので、いきなり全部一致検索より、まずは 短い連続ペアで探す 方がいいです。
+
+⸻
+
+重要：まず既知の座標を作る
+
+検索しやすくするために、欠陥画素テーブルを意図的に分かりやすい値にします。
+
+例えばこう。
+
+table[0] = {100, 200}
+table[1] = {101, 201}
+table[2] = {102, 202}
+table[3] = {103, 203}
+table[4] = {104, 204}
+
+すると、バイナリ上ではこうなります。
+
+100,200,101,201,102,202,103,203,104,204
+
+uint16リトルエンディアンのバイト列として探せます。
+
+これをやると、かなり見つけやすいです。
+
+⸻
+
+Pythonで検索する方法
+
+1. 探したいx,yペア列を作る
+
+from pathlib import Path
+import numpy as np
+# キャリブレーション全体のbin
+calib_path = Path("calibration.bin")
+data = calib_path.read_bytes()
+# 探したい欠陥画素座標
+# C側で意図的にこの値を入れておく
+pairs = [
+    (100, 200),
+    (101, 201),
+    (102, 202),
+    (103, 203),
+    (104, 204),
+]
+# uint16 little endian のバイト列を作る
+pattern = b"".join(
+    x.to_bytes(2, byteorder="little") +
+    y.to_bytes(2, byteorder="little")
+    for x, y in pairs
+)
+offset = data.find(pattern)
+print("pattern size =", len(pattern))
+print("found offset =", offset)
+
+これで found offset が -1 でなければ、その場所がかなり怪しいです。
+
+⸻
+
+2. 見つかった場所からx,yを読む
+
+if offset != -1:
+    # 見つかった場所から、まず200件分くらい読む
+    table_size = 200
+    pixel_size_bytes = 4  # uint16 x + uint16 y
+    raw = data[offset : offset + table_size * pixel_size_bytes]
+    arr = np.frombuffer(raw, dtype="<u2")  # little endian uint16
+    # x,y,x,y,... なので、2列にreshape
+    xy = arr.reshape(-1, 2)
+    print(xy[:20])
+
+出力イメージ。
+
+[[100 200]
+ [101 201]
+ [102 202]
+ [103 203]
+ [104 204]
+ ...
+]
+
+これが出たら、そこはほぼ欠陥画素テーブルです。
+
+⸻
+
+count が前にある可能性
+
+構造体がこうなっている可能性もあります。
+
+struct DefectiveTable
+{
+    uint16_t count;
+    DefectivePixel table[200];
+};
+
+この場合、メモリはこうです。
+
+count 2byte
+table[0].x 2byte
+table[0].y 2byte
+table[1].x 2byte
+table[1].y 2byte
+...
+
+すると、table[0] の開始位置は、構造体先頭から2byte後です。
+
+だから、検索で見つかった offset は、
+
+table[0] の位置
+
+であって、
+
+DefectiveTable構造体全体の先頭
+
+ではない可能性があります。
+
+この場合、2byte前を見る。
+
+if offset >= 2:
+    count = int.from_bytes(data[offset-2:offset], byteorder="little")
+    print("maybe count =", count)
+
+もし count=5 や count=200 っぽい値なら、かなり当たりです。
+
+⸻
+
+padding がある可能性
+
+もし構造体がこうなら問題ないです。
+
+struct DefectivePixel
+{
+    uint16_t x;
+    uint16_t y;
+};
+
+これは普通4byteです。
+
+でも、もしこういうメンバがあると、
+
+struct DefectivePixel
+{
+    uint16_t x;
+    uint16_t y;
+    uint8_t type;
+};
+
+paddingが入って、1要素が6byteや8byteになることがあります。
+
+だから、本当に sizeof(DefectivePixel) をC側で出せるなら出してください。
+
+printf("sizeof(DefectivePixel) = %zu\n", sizeof(DefectivePixel));
+printf("sizeof(DefectiveTable) = %zu\n", sizeof(DefectiveTable));
+
+これがかなり重要です。
+
+⸻
+
+C側で確認用ログを出す
+
+C/C++側でこういうログを出せると強いです。
+
+#include <cstdio>
+#include <cstdint>
+struct DefectivePixel
+{
+    std::uint16_t x;
+    std::uint16_t y;
+};
+struct DefectiveTable
+{
+    std::uint16_t count;
+    DefectivePixel table[200];
+};
+void printDefectiveLayout()
+{
+    std::printf("sizeof(DefectivePixel) = %zu\n", sizeof(DefectivePixel));
+    std::printf("sizeof(DefectiveTable) = %zu\n", sizeof(DefectiveTable));
+    std::printf("offset count = %zu\n", offsetof(DefectiveTable, count));
+    std::printf("offset table = %zu\n", offsetof(DefectiveTable, table));
+}
+
+offsetof を使う場合はこれが必要です。
+
+#include <cstddef>
+
+⸻
+
+検索用に「ありえない座標」を入れるのも有効
+
+実画像の欠陥座標として自然な値だと、他の場所にも偶然出る可能性があります。
+
+だから検索用には、範囲内だけど特徴的な値にするのがよいです。
+
+例えば画像幅3840、高さ1860なら、
+
+x = 3001, 3002, 3003, 3004
+y = 1701, 1702, 1703, 1704
+
+みたいな値。
+
+ただし範囲外は使わない方がいいです。
+補正処理で弾かれる可能性があるから。
+
+⸻
+
+より強い検索：複数パターンで探す
+
+例えば、5個の座標を入れたなら、全部一致で探す。
+
+pairs = [
+    (3001, 1701),
+    (3002, 1702),
+    (3003, 1703),
+    (3004, 1704),
+    (3005, 1705),
+]
+
+これで見つかれば強い。
+
+もし見つからない場合は、次の可能性があります。
+
+1. x,y の順番が逆
+2. エンディアンが違う
+3. table[0] の前に別メンバがある
+4. x,y以外にtypeなどがあり、1要素が4byteではない
+5. 構造体が別形式で保存されている
+6. 書き換えたと思ったテーブルが、実際には保存対象ではない
+
+⸻
+
+x,y の順番が逆かもしれない
+
+構造体がこうかもしれません。
+
+struct DefectivePixel
+{
+    uint16_t y;
+    uint16_t x;
+};
+
+その場合は、検索パターンを逆にします。
+
+pattern_yx = b"".join(
+    y.to_bytes(2, "little") +
+    x.to_bytes(2, "little")
+    for x, y in pairs
+)
+offset_yx = data.find(pattern_yx)
+print("found yx offset =", offset_yx)
+
+⸻
+
+1要素が4byteではない場合の探索
+
+仮に1要素が8byteかもしれないなら、x,yの後ろに何か挟まっている可能性があります。
+
+その場合、完全な連続バイト列では探しにくい。
+
+代わりに、uint16列として読んで、x,yの出現位置を探します。
+
+import numpy as np
+from pathlib import Path
+data = Path("calibration.bin").read_bytes()
+u16 = np.frombuffer(data, dtype="<u2")
+pairs = [
+    (3001, 1701),
+    (3002, 1702),
+    (3003, 1703),
+    (3004, 1704),
+]
+# uint16列の中で x,y,x,y... が出る場所を探す
+pattern_u16 = np.array(
+    [v for xy in pairs for v in xy],
+    dtype=np.uint16
+)
+matches = []
+for i in range(0, len(u16) - len(pattern_u16)):
+    if np.array_equal(u16[i:i+len(pattern_u16)], pattern_u16):
+        matches.append(i)
+print("u16 index matches =", matches[:20])
+print("byte offsets =", [m * 2 for m in matches[:20]])
+
+⸻
+
+欠陥画素テーブル探索の現実的な進め方
+
+おすすめはこれです。
+
+1. C側で欠陥画素テーブルの先頭5件を特徴的な座標に書き換える
+2. キャリブレーション全体をbin出力する
+3. Pythonで x,y,x,y... のバイト列を検索する
+4. 見つかったoffset周辺をuint16で読み出す
+5. 2byte前や4byte前にcountらしき値がないか見る
+6. C側で sizeof / offsetof を出せるなら出す
+
+⸻
+
+欠陥画素テーブルを見つけた後に見るべきもの
+
+見つかったら、周辺をこう表示するとよいです。
+
+def dump_u16_around(data: bytes, byte_offset: int, before_words=16, after_words=64):
+    start = max(0, byte_offset - before_words * 2)
+    end = min(len(data), byte_offset + after_words * 2)
+    u16 = np.frombuffer(data[start:end], dtype="<u2")
+    print("dump start byte =", start)
+    for i, v in enumerate(u16):
+        absolute_byte = start + i * 2
+        print(f"{absolute_byte:08X}: {int(v)}")
+dump_u16_around(data, offset)
+
+これで、周辺に count や別のヘッダー値があるか見えます。
+
+⸻
+
+まとめ
+
+欠陥画素テーブルは、シェーディングみたいに「大きな連続uint8表」ではなく、
+
+uint16 x
+uint16 y
+uint16 x
+uint16 y
+...
+
+の座標リストとして探すのが自然です。
+
+なので、前回のように1000バイト列で探すより、
+
+特徴的な x,y ペアを5〜10個作る
+↓
+その x,y,x,y... のuint16バイト列を検索する
+
+のがいいです。
+
+最初に疑う形はこれ。
+
+1要素 = 4byte
+x: uint16
+y: uint16
+little endian
+
+見つからなければ、
+
+y,x順
+countあり
+paddingあり
+1要素が6/8byte
+構造体先頭とtable先頭が違う
+
+を順に疑えばいいです。
+
+
+
+
+
 ```
