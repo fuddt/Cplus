@@ -1776,6 +1776,156 @@ int writeShadingTableBin(
 
 
 
+#include <algorithm>
+#include <cstdint>
+#include <cstring>   // std::memcpy, std::memset
 
+void copyBottomLeftWithMemcpy(
+    const std::uint8_t* src,
+    int srcWidth,
+    int srcHeight,
+    int srcLineSpan,
+    std::uint8_t* dst,
+    int dstWidth,
+    int dstHeight,
+    int dstLineSpan
+)
+{
+    if (src == nullptr || dst == nullptr)
+    {
+        return;
+    }
+
+    if (srcWidth <= 0 || srcHeight <= 0 ||
+        dstWidth <= 0 || dstHeight <= 0 ||
+        srcLineSpan <= 0 || dstLineSpan <= 0)
+    {
+        return;
+    }
+
+    // srcWidth / dstWidth は「byte数」として扱う前提。
+    // 12bit packed の場合、画素数ではなく byte幅を渡す必要がある。
+    if (srcWidth > srcLineSpan || dstWidth > dstLineSpan)
+    {
+        return;
+    }
+
+    // ------------------------------------------------------------
+    // [1] dst全体を0で初期化する
+    //
+    // dstは uint8_t の連続バッファなので、
+    // height × lineSpan byte をまとめて0埋めできる。
+    // ------------------------------------------------------------
+    std::memset(
+        dst,
+        0,
+        static_cast<std::size_t>(dstHeight) *
+        static_cast<std::size_t>(dstLineSpan)
+    );
+
+    // ------------------------------------------------------------
+    // [2] コピーできる範囲を決める
+    //
+    // ここでの copyWidth は byte数。
+    // 12bit packed の場合、画素数ではない。
+    // ------------------------------------------------------------
+    const int copyWidth =
+        std::min(srcWidth, dstWidth);
+
+    const int copyHeight =
+        std::min(srcHeight, dstHeight);
+
+    // ------------------------------------------------------------
+    // [3] 左下配置の開始Yを決める
+    //
+    // row 0 が上、row が増えるほど下、という前提。
+    // dstHeight - copyHeight にすることで、下端が揃う。
+    // ------------------------------------------------------------
+    const int dstStartY =
+        dstHeight - copyHeight;
+
+    // ------------------------------------------------------------
+    // [4] 1行ずつ memcpy でコピーする
+    //
+    // src row y → dst row dstStartY + y
+    //
+    // 1行の中身は連続しているので、byte単位でまとめてコピーできる。
+    // ------------------------------------------------------------
+    for (int y = 0; y < copyHeight; ++y)
+    {
+        const std::uint8_t* srcRow =
+            src + static_cast<std::size_t>(y) * srcLineSpan;
+
+        std::uint8_t* dstRow =
+            dst + static_cast<std::size_t>(dstStartY + y) * dstLineSpan;
+
+        std::memcpy(
+            dstRow,
+            srcRow,
+            static_cast<std::size_t>(copyWidth)
+        );
+    }
+}
+
+
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
+
+void copyBottomLeftWithMemcpy(
+    const std::uint8_t* src,
+    int srcWidth,
+    int srcHeight,
+    int srcLineSpan,
+    std::uint8_t* dst,
+    int dstWidth,
+    int dstHeight,
+    int dstLineSpan
+)
+{
+    if (src == nullptr || dst == nullptr)
+    {
+        return;
+    }
+
+    const int copyWidth =
+        std::min(srcWidth, dstWidth);
+
+    const int copyHeight =
+        std::min(srcHeight, dstHeight);
+
+    const int dstStartY =
+        dstHeight - copyHeight;
+
+    // dst全体を0で初期化する
+    std::memset(
+        dst,
+        0,
+        static_cast<std::size_t>(dstHeight) *
+        static_cast<std::size_t>(dstLineSpan)
+    );
+
+    // srcは0行目から読む
+    const std::uint8_t* srcRow = src;
+
+    // dstは左下配置なので、dstStartY行目から書く
+    std::uint8_t* dstRow =
+        dst + static_cast<std::size_t>(dstStartY) *
+              static_cast<std::size_t>(dstLineSpan);
+
+    for (int y = 0; y < copyHeight; ++y)
+    {
+        // 1行ぶんをまとめてコピーする
+        std::memcpy(
+            dstRow,
+            srcRow,
+            static_cast<std::size_t>(copyWidth)
+        );
+
+        // 次の行の先頭へ進める
+        srcRow += srcLineSpan;
+        dstRow += dstLineSpan;
+    }
+}
 
 ```
