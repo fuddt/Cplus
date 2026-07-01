@@ -1,8 +1,4 @@
-賛成です。
 
-しかも、**調査報告用のサンプルコード**なら、本番コードではなく「概念が伝わるコード」の方が価値があります。
-
-私なら3段階に分けて載せます。
 
 ---
 
@@ -38,7 +34,7 @@ dll = ctypes.WinDLL("MFVideoCreate.dll")
 dll.MFVCCreateHandle.restype = ctypes.c_void_p
 dll.MFVCDestroyHandle.argtypes = [ctypes.c_void_p]
 
-handle = dll.MFVCCreateHandle()
+handle = dll.MFCreateHandle()
 
 dll.MFVCDestroyHandle(handle)
 ```
@@ -75,7 +71,7 @@ ptr = img.ctypes.data_as(
 # バッファサイズ
 length = img.nbytes
 
-dll.MFVCWriteFrame(
+dll.MFWriteFrame(
     handle,
     ptr,
     length
@@ -139,7 +135,7 @@ DLL
 
          ▼
 
- MFVCWriteFrame()
+ MFWriteFrame()
 
          │
 
