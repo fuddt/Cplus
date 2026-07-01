@@ -104,7 +104,7 @@ DLL
     CreateHandle()
            │
            ▼
-      MFVCSetup()
+      MFSetup()
 
            │
            ▼
@@ -247,4 +247,4 @@ for image in images:
 DestroyHandle(handle)
 ```
 
-このくらい簡潔にしておくと、「Python移植後の全体像」が読み手にすぐ伝わりますし、実装担当者にとっても出発点として使いやすいサンプルになります。
+
