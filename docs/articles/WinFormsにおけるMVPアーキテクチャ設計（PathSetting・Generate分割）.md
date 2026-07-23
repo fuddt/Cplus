@@ -182,3 +182,172 @@ MainFormは3つのUserControlと共有Modelを生成し、各Presenterへ配線�
 - `GeneratePresenter` はコンストラクタで共有 `PathSettingModel` の参照を受け取る
 - 「生成」ボタン押下時に `_sharedModel` の各パスを読み取り、`IReportGenerationService.Generate` に渡す
 - PathSettingForm側の変更を都度Generate側が監視する必要はなく、ボタン押下時に最新のModelを読むだけでよい
+
+## 追加要件：フォルダパス自動生成とA依存関係
+
+PathSettingの入力欄をFileA〜EからFolderA〜Eに変更し、フォルダパスから内部的にファイルパスを自動生成する仕様に発展させる。
+
+- FolderA〜Eは好きなタイミング・順序で入力できる
+- FolderAが入力されていないと、B〜Eに紐づくファイルパスは生成できない（Aに依存）
+- Aが後から入力された場合、既に入力済みのB〜Eを使って自動的に生成する（入力し直しは不要）
+- Aが後から変更・削除された場合も、B〜Eの生成結果を再計算する（古い生成結果を残さない）
+
+### 「変更キーだけ再計算」ではなく「全体再評価」を選ぶ理由
+
+最初に検討したのは、変更されたキーだけを対象に影響範囲を判定して個別に再生成する方式（Aが変わったらB〜Eを再生成、それ以外は自身だけ再生成）だった。今回の依存グラフ（AだけがB〜Eの共通の親）ではこれでも破綻しないが、依存関係が複雑化したときに「再計算漏れ」というバグを生みやすい。
+
+対象は5件程度なので性能上のデメリットはほぼない。そこで、どの入力欄が変わっても**A〜E全体を毎回再評価し、条件を満たしたものだけ生成する**方式を採用する。「毎回全部を無条件に作り直す」わけではない点に注意——Aが空または不正な状態なら、B〜Eは「A待ち」のまま生成結果をクリアするだけで、入力値自体は保持し続ける。
+
+### 状態はbool/nullではなく列挙型で持つ
+
+生成結果の有無を`bool`や`null`の2値で表現しようとすると、次の違いを区別できない。
+
+```csharp
+public enum PathGenerationStatus
+{
+    NotEntered,   // 対象フォルダが未入力
+    WaitingForA,  // Aが未入力/無効なので待機中
+    Success,      // 生成成功
+    InvalidInput, // 入力値が不正
+    Failed        // 生成処理で失敗
+}
+```
+
+「未入力」「A待ち」「入力不正」はUIに出すべきメッセージが違うため、それぞれ別の状態として扱う。各フォルダの入力値・生成結果・状態・メッセージは、1つの`PathGenerationItem`にまとめて持たせる。
+
+```csharp
+public class PathGenerationItem
+{
+    public string FolderPath { get; set; } = string.Empty;
+    public string GeneratedFilePath { get; private set; } = string.Empty;
+    public PathGenerationStatus Status { get; private set; } = PathGenerationStatus.NotEntered;
+    public string Message { get; private set; } = string.Empty;
+
+    public void SetNotEntered() { GeneratedFilePath = string.Empty; Status = PathGenerationStatus.NotEntered; Message = string.Empty; }
+    public void SetWaitingForA(string message) { GeneratedFilePath = string.Empty; Status = PathGenerationStatus.WaitingForA; Message = message; }
+    public void Apply(PathGenerationResult result) { GeneratedFilePath = result.FilePath; Status = result.Status; Message = result.Message; }
+}
+```
+
+状態変更を専用メソッド（`SetWaitingForA`など）越しに行わせているのは、外部から`Status = Success`なのに`GeneratedFilePath`が空、のような矛盾状態を作れてしまわないようにするため。「Modelはロジックを持たない単純なPOCOであるべき」という考え方もあるが、それは絶対原則ではなく、オブジェクト自身の状態を自己防衛的に守れる設計の方が安全な場面も多い。
+
+### 責務を4層に分離する
+
+ここで一段階見落としやすい罠がある。「パスを組み立てる処理」と「A〜Eの依存関係を判定する処理」を同じクラスに詰め込んでしまうことだ。
+
+```text
+Bが入力済み、Aが未入力 → BはWaitingForA
+```
+
+これは単なるパス生成ロジックではなく、この画面固有の「Aは親、B〜Eは子」という依存関係のルールである。これをパス生成サービスに持たせると、サービスは次のように責務過多になる。
+
+- 個別のパス生成
+- A〜Eの入力状態管理
+- 依存関係の判定
+- 各項目の状態遷移
+
+そこで責務を4層に分離する。
+
+```text
+PathSettingModel            … A〜EのPathGenerationItemを保持する共有データ（GenerateFormとも共有）
+IFilePathGenerationService  … 1本のパスを組み立てるだけ。A〜Eの依存関係は知らない
+IPathSettingEvaluator       … A〜Eの依存関係を判定し状態遷移を決める。IFilePathGenerationServiceを呼ぶ
+PathSettingPresenter        … ViewとIPathSettingEvaluatorをつなぐだけ
+```
+
+`IPathSettingEvaluator`をインターフェース化しているのは、`IFileValidationService`や`IReportGenerationService`と同様、Presenterが依存するものは全てインターフェース越しにして単体テスト可能にするという、この設計全体の方針との一貫性のためである。
+
+```mermaid
+classDiagram
+    class FolderKey {
+        <<enum>>
+        A
+        B
+        C
+        D
+        E
+    }
+
+    class PathGenerationStatus {
+        <<enum>>
+        NotEntered
+        WaitingForA
+        Success
+        InvalidInput
+        Failed
+    }
+
+    class PathGenerationItem {
+        +string FolderPath
+        +string GeneratedFilePath
+        +PathGenerationStatus Status
+        +string Message
+        +SetNotEntered()
+        +SetWaitingForA(string message)
+        +Apply(PathGenerationResult result)
+    }
+
+    class PathSettingModel {
+        +PathGenerationItem A
+        +PathGenerationItem B
+        +PathGenerationItem C
+        +PathGenerationItem D
+        +PathGenerationItem E
+        +string ResultData1Path
+    }
+    PathSettingModel --> PathGenerationItem : holds 5x
+
+    class IFilePathGenerationService {
+        <<interface>>
+        +PathGenerationResult GenerateA(string folderPath)
+        +PathGenerationResult GenerateDependent(string folderPathA, string dependentFolderPath, PathType pathType)
+    }
+
+    class FilePathGenerationService {
+        +PathGenerationResult GenerateA(string folderPath)
+        +PathGenerationResult GenerateDependent(string folderPathA, string dependentFolderPath, PathType pathType)
+    }
+    FilePathGenerationService ..|> IFilePathGenerationService
+
+    class IPathSettingEvaluator {
+        <<interface>>
+        +Recalculate(PathSettingModel model)
+    }
+
+    class PathSettingEvaluator {
+        -IFilePathGenerationService _generationService
+        +Recalculate(PathSettingModel model)
+        -EvaluateA(PathGenerationItem itemA)
+        -EvaluateDependent(PathGenerationItem itemA, PathGenerationItem dependent, PathType pathType)
+    }
+    PathSettingEvaluator ..|> IPathSettingEvaluator
+    PathSettingEvaluator --> IFilePathGenerationService : uses
+    PathSettingEvaluator --> PathGenerationItem : updates
+
+    class PathSettingPresenter {
+        -IPathSettingView _view
+        -PathSettingModel _model
+        -IPathSettingEvaluator _evaluator
+        -IFileValidationService _validator
+        -OnFolderPathChanged()
+        -RunValidationIfBothSucceeded()
+    }
+    PathSettingPresenter --> IPathSettingEvaluator : uses
+    PathSettingPresenter --> PathSettingModel : updates
+```
+
+### Presenter側の流れ
+
+```text
+OnFolderPathChanged():
+    model.A.FolderPath = view.FolderPathA   # Viewの入力値を状態モデルへ反映（A〜E全て）
+    model.B.FolderPath = view.FolderPathB
+    ... (C, D, E も同様)
+
+    evaluator.Recalculate(model)            # A〜E全体を再評価。Evaluatorが依存関係を判定し、
+                                             # 必要な箇所だけIFilePathGenerationServiceへ委譲する
+    RunValidationIfBothSucceeded()          # 両方Status==Successになったペアだけ既存の検証を実行
+    view.ShowState(model)                   # 状態・メッセージ・生成結果を画面へ反映
+```
+
+件数一致・カラム名一致の相関検証は、生の入力ではなく `PathGenerationItem.Status == Success` になった**生成後のファイルパス**を対象に実行する。両方が `Success` になったタイミングで `IFileValidationService` を呼び出す。
