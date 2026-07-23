@@ -3,9 +3,11 @@
 
 使い方:
     python plantuml_to_table.py diagram.puml
+    python plantuml_to_table.py --java diagram.puml   # フィールドをJavaスタイル（型名 変数名）でパース
     cat diagram.puml | python plantuml_to_table.py
 """
 
+import argparse
 import re
 import sys
 
@@ -18,7 +20,7 @@ MODIFIER_MAP = {
 }
 
 
-def parse_member(line):
+def parse_member(line, java_style=False):
     sym = line[0] if line and line[0] in MODIFIER_MAP else None
     if sym is None:
         return None
@@ -36,6 +38,19 @@ def parse_member(line):
             'return_type': (return_type or '').strip() or '-',
         }
 
+    if java_style:
+        # 型名 変数名 の形式: +int hp
+        java_match = re.match(r'([\w<>\[\]]+)\s+(\w+)$', rest)
+        if java_match:
+            field_type, name = java_match.groups()
+            return {
+                'kind': 'field',
+                'name': name,
+                'modifier': MODIFIER_MAP[sym],
+                'type': field_type,
+            }
+
+    # デフォルト: 変数名 : 型名 の形式: +hp : int
     field_match = re.match(r'(\w+)\s*(?::\s*(.+))?', rest)
     if field_match:
         name, field_type = field_match.groups()
@@ -49,7 +64,7 @@ def parse_member(line):
     return None
 
 
-def parse_plantuml(text):
+def parse_plantuml(text, java_style=False):
     classes = {}
     current_class = None
     brace_depth = 0
@@ -81,7 +96,7 @@ def parse_plantuml(text):
             continue
 
         if line and line[0] in MODIFIER_MAP:
-            member = parse_member(line)
+            member = parse_member(line, java_style=java_style)
             if member:
                 key = 'methods' if member['kind'] == 'method' else 'fields'
                 classes[current_class][key].append(member)
@@ -115,17 +130,23 @@ def to_markdown(classes):
 
 
 def main():
-    if len(sys.argv) > 1:
+    parser = argparse.ArgumentParser(description='PlantUML クラス図 → Markdown 表 変換ツール')
+    parser.add_argument('file', nargs='?', help='入力ファイル（省略時は標準入力）')
+    parser.add_argument('--java', action='store_true',
+                        help='フィールドを Javaスタイル（型名 変数名）でパースする')
+    args = parser.parse_args()
+
+    if args.file:
         try:
-            with open(sys.argv[1], encoding='utf-8') as f:
+            with open(args.file, encoding='utf-8') as f:
                 text = f.read()
         except FileNotFoundError:
-            print(f'Error: file not found: {sys.argv[1]}', file=sys.stderr)
+            print(f'Error: file not found: {args.file}', file=sys.stderr)
             sys.exit(1)
     else:
         text = sys.stdin.read()
 
-    classes = parse_plantuml(text)
+    classes = parse_plantuml(text, java_style=args.java)
     if not classes:
         print('クラスが見つかりませんでした。', file=sys.stderr)
         sys.exit(1)
