@@ -75,7 +75,7 @@ def parse_plantuml(text, java_style=False):
         if not line or line.startswith("'"):
             continue
 
-        class_match = re.match(r'(?:abstract\s+)?class\s+(\w+)', line)
+        class_match = re.match(r'(?:abstract\s+)?(?:class|struct)\s+(\w+)', line)
         if class_match:
             current_class = class_match.group(1)
             classes[current_class] = {'methods': [], 'fields': []}
