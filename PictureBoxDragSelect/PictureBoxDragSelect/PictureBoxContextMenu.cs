@@ -13,13 +13,19 @@ namespace PictureBoxDragSelect
     public class PictureBoxContextMenu : ContextMenuStrip
     {
         private readonly PictureBox _target;
+        private readonly Func<bool> _canOpen;
         private readonly ToolStripMenuItem _openItem;
         private readonly ToolStripMenuItem _saveAsItem;
         private readonly ToolStripMenuItem _clearItem;
 
-        public PictureBoxContextMenu(PictureBox target)
+        /// <param name="canOpen">
+        /// メニューを開いてよいかどうかを判定するデリゲート。呼び出し側の都合(チェックボックスの
+        /// ON/OFFなど)を渡したいだけの用途なので、省略した場合は常に開ける。
+        /// </param>
+        public PictureBoxContextMenu(PictureBox target, Func<bool> canOpen = null)
         {
             _target = target ?? throw new ArgumentNullException(nameof(target));
+            _canOpen = canOpen;
 
             _openItem = new ToolStripMenuItem("画像を開く...");
             _openItem.Click += OpenItem_Click;
@@ -40,6 +46,12 @@ namespace PictureBoxDragSelect
 
         private void PictureBoxContextMenu_Opening(object sender, CancelEventArgs e)
         {
+            if (_canOpen != null && !_canOpen())
+            {
+                e.Cancel = true;
+                return;
+            }
+
             bool hasImage = _target.Image != null;
             _saveAsItem.Enabled = hasImage;
             _clearItem.Enabled = hasImage;
