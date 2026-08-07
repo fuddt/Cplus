@@ -8,6 +8,7 @@ namespace PictureBoxDragSelect
     public partial class Form1 : Form
     {
         private readonly Button _openButton;
+        private readonly CheckBox _enableContextMenuCheckBox;
         private readonly PictureBox _pictureBox;
         private readonly PictureBoxContextMenu _contextMenu;
 
@@ -29,6 +30,15 @@ namespace PictureBoxDragSelect
             };
             _openButton.Click += OpenButton_Click;
 
+            _enableContextMenuCheckBox = new CheckBox
+            {
+                Left = _openButton.Right + 12,
+                Top = 16,
+                Width = 200,
+                Text = "右クリックメニューを有効にする",
+                Checked = true
+            };
+
             _pictureBox = new PictureBox
             {
                 Left = 12,
@@ -45,12 +55,14 @@ namespace PictureBoxDragSelect
             _pictureBox.MouseUp += PictureBox_MouseUp;
             _pictureBox.Paint += PictureBox_Paint;
 
-            // 右クリックメニューの中身は PictureBoxContextMenu に任せる。ここではインスタンスを持つだけ。
-            _contextMenu = new PictureBoxContextMenu(_pictureBox);
+            // 右クリックメニューの中身は PictureBoxContextMenu に任せる。ここではインスタンスを持ち、
+            // チェックボックスの状態を判定用デリゲートとして渡すだけで、メニューの中身は関知しない。
+            _contextMenu = new PictureBoxContextMenu(_pictureBox, () => _enableContextMenuCheckBox.Checked);
             _pictureBox.ContextMenuStrip = _contextMenu;
 
             Controls.Add(_pictureBox);
             Controls.Add(_openButton);
+            Controls.Add(_enableContextMenuCheckBox);
         }
 
         private void OpenButton_Click(object sender, EventArgs e)
