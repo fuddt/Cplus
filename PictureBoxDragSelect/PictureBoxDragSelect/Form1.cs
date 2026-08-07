@@ -9,6 +9,7 @@ namespace PictureBoxDragSelect
     {
         private readonly Button _openButton;
         private readonly PictureBox _pictureBox;
+        private readonly PictureBoxContextMenu _contextMenu;
 
         // ドラッグ中かどうか、開始位置、現在の選択範囲を保持する
         private bool _isDragging;
@@ -43,6 +44,10 @@ namespace PictureBoxDragSelect
             _pictureBox.MouseMove += PictureBox_MouseMove;
             _pictureBox.MouseUp += PictureBox_MouseUp;
             _pictureBox.Paint += PictureBox_Paint;
+
+            // 右クリックメニューの中身は PictureBoxContextMenu に任せる。ここではインスタンスを持つだけ。
+            _contextMenu = new PictureBoxContextMenu(_pictureBox);
+            _pictureBox.ContextMenuStrip = _contextMenu;
 
             Controls.Add(_pictureBox);
             Controls.Add(_openButton);
