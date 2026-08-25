@@ -105,14 +105,19 @@ Color03=10,20,30
 ```csharp
 using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 
 public sealed class SequentialStopIniColorLoader
 {
     private const string SectionName = "Colors";
 
+    // Load実行後、失敗した行の理由がここに溜まる
+    public IReadOnlyList<string> Errors { get; private set; } = new List<string>();
+
     public IReadOnlyList<Color> Load(IniFile ini)
     {
         var colors = new List<Color>();
+        var errors = new List<string>();
 
         for (int index = 1; ; index++)
         {
@@ -122,21 +127,29 @@ public sealed class SequentialStopIniColorLoader
                 break; // 連番が途切れたらそこで打ち止め
             }
 
-            if (TryParseColor(rawValue, out Color color))
+            if (TryParseColor(rawValue, out Color color, out string errorMessage))
             {
                 colors.Add(color);
             }
+            else
+            {
+                errors.Add($"{key}: {errorMessage}");
+            }
         }
 
+        Errors = errors;
         return colors;
     }
 
-    private static bool TryParseColor(string rawValue, out Color color)
+    private static bool TryParseColor(string rawValue, out Color color, out string errorMessage)
     {
         color = default;
+        errorMessage = null;
+
         string[] parts = rawValue.Split(',');
         if (parts.Length != 3)
         {
+            errorMessage = BuildErrorMessage(rawValue);
             return false;
         }
 
@@ -144,12 +157,30 @@ public sealed class SequentialStopIniColorLoader
             !byte.TryParse(parts[1], out byte g) ||
             !byte.TryParse(parts[2], out byte b))
         {
+            errorMessage = BuildErrorMessage(rawValue);
             return false;
         }
 
         color = Color.FromArgb(r, g, b);
         return true;
     }
+
+    private static string BuildErrorMessage(string rawValue)
+    {
+        return rawValue.Any(IsFullWidth)
+            ? $"全角文字が含まれています。半角で入力してください: \"{rawValue}\""
+            : $"RGB値の形式が不正です（例: 120,56,72）: \"{rawValue}\"";
+    }
+
+    private static bool IsFullWidth(char c)
+    {
+        // 全角英数・記号（Fullwidth Forms: U+FF00〜U+FFEF）と全角スペース（U+3000）を対象とする
+        return (c >= FullWidthFormsStart && c <= FullWidthFormsEnd) || c == IdeographicSpace;
+    }
+
+    private const char FullWidthFormsStart = '＀';
+    private const char FullWidthFormsEnd = '￯';
+    private const char IdeographicSpace = '　';
 }
 ```
 
@@ -187,9 +218,13 @@ public sealed class SequentialSortIniColorLoader
     private const string SectionName = "Colors";
     private static readonly Regex KeyPattern = new Regex(@"^Color(\d+)$", RegexOptions.IgnoreCase);
 
+    // Load実行後、失敗した行の理由がここに溜まる
+    public IReadOnlyList<string> Errors { get; private set; } = new List<string>();
+
     public IReadOnlyList<Color> Load(IniFile ini)
     {
         var numbered = new List<(int Index, Color Color)>();
+        var errors = new List<string>();
 
         foreach (string key in ini.GetKeys(SectionName))
         {
@@ -199,27 +234,36 @@ public sealed class SequentialSortIniColorLoader
                 continue;
             }
 
-            if (!ini.TryGetValue(SectionName, key, out string rawValue) ||
-                !TryParseColor(rawValue, out Color color))
+            if (!ini.TryGetValue(SectionName, key, out string rawValue))
             {
+                continue;
+            }
+
+            if (!TryParseColor(rawValue, out Color color, out string errorMessage))
+            {
+                errors.Add($"{key}: {errorMessage}");
                 continue;
             }
 
             numbered.Add((int.Parse(match.Groups[1].Value), color));
         }
 
+        Errors = errors;
         return numbered
             .OrderBy(entry => entry.Index)
             .Select(entry => entry.Color)
             .ToList();
     }
 
-    private static bool TryParseColor(string rawValue, out Color color)
+    private static bool TryParseColor(string rawValue, out Color color, out string errorMessage)
     {
         color = default;
+        errorMessage = null;
+
         string[] parts = rawValue.Split(',');
         if (parts.Length != 3)
         {
+            errorMessage = BuildErrorMessage(rawValue);
             return false;
         }
 
@@ -227,12 +271,30 @@ public sealed class SequentialSortIniColorLoader
             !byte.TryParse(parts[1], out byte g) ||
             !byte.TryParse(parts[2], out byte b))
         {
+            errorMessage = BuildErrorMessage(rawValue);
             return false;
         }
 
         color = Color.FromArgb(r, g, b);
         return true;
     }
+
+    private static string BuildErrorMessage(string rawValue)
+    {
+        return rawValue.Any(IsFullWidth)
+            ? $"全角文字が含まれています。半角で入力してください: \"{rawValue}\""
+            : $"RGB値の形式が不正です（例: 120,56,72）: \"{rawValue}\"";
+    }
+
+    private static bool IsFullWidth(char c)
+    {
+        // 全角英数・記号（Fullwidth Forms: U+FF00〜U+FFEF）と全角スペース（U+3000）を対象とする
+        return (c >= FullWidthFormsStart && c <= FullWidthFormsEnd) || c == IdeographicSpace;
+    }
+
+    private const char FullWidthFormsStart = '＀';
+    private const char FullWidthFormsEnd = '￯';
+    private const char IdeographicSpace = '　';
 }
 ```
 
@@ -256,38 +318,53 @@ List=120,56,72;200,100,50;10,20,30
 ```csharp
 using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 
 public sealed class DelimitedLineIniColorLoader
 {
     private const string SectionName = "Colors";
     private const string KeyName = "List";
 
+    // Load実行後、失敗した色の理由がここに溜まる
+    public IReadOnlyList<string> Errors { get; private set; } = new List<string>();
+
     public IReadOnlyList<Color> Load(IniFile ini)
     {
         var colors = new List<Color>();
+        var errors = new List<string>();
 
         if (!ini.TryGetValue(SectionName, KeyName, out string rawValue))
         {
+            Errors = errors;
             return colors;
         }
 
-        foreach (string entry in rawValue.Split(';'))
+        string[] entries = rawValue.Split(';');
+        for (int i = 0; i < entries.Length; i++)
         {
-            if (TryParseColor(entry, out Color color))
+            if (TryParseColor(entries[i], out Color color, out string errorMessage))
             {
                 colors.Add(color);
             }
+            else
+            {
+                errors.Add($"{i + 1}件目: {errorMessage}");
+            }
         }
 
+        Errors = errors;
         return colors;
     }
 
-    private static bool TryParseColor(string rawValue, out Color color)
+    private static bool TryParseColor(string rawValue, out Color color, out string errorMessage)
     {
         color = default;
+        errorMessage = null;
+
         string[] parts = rawValue.Split(',');
         if (parts.Length != 3)
         {
+            errorMessage = BuildErrorMessage(rawValue);
             return false;
         }
 
@@ -295,12 +372,30 @@ public sealed class DelimitedLineIniColorLoader
             !byte.TryParse(parts[1], out byte g) ||
             !byte.TryParse(parts[2], out byte b))
         {
+            errorMessage = BuildErrorMessage(rawValue);
             return false;
         }
 
         color = Color.FromArgb(r, g, b);
         return true;
     }
+
+    private static string BuildErrorMessage(string rawValue)
+    {
+        return rawValue.Any(IsFullWidth)
+            ? $"全角文字が含まれています。半角で入力してください: \"{rawValue}\""
+            : $"RGB値の形式が不正です（例: 120,56,72）: \"{rawValue}\"";
+    }
+
+    private static bool IsFullWidth(char c)
+    {
+        // 全角英数・記号（Fullwidth Forms: U+FF00〜U+FFEF）と全角スペース（U+3000）を対象とする
+        return (c >= FullWidthFormsStart && c <= FullWidthFormsEnd) || c == IdeographicSpace;
+    }
+
+    private const char FullWidthFormsStart = '＀';
+    private const char FullWidthFormsEnd = '￯';
+    private const char IdeographicSpace = '　';
 }
 ```
 
@@ -323,6 +418,7 @@ WarningColor=200,40,40
 ```csharp
 using System;
 using System.Drawing;
+using System.Linq;
 
 public sealed class NamedKeyColorSettings
 {
@@ -341,20 +437,28 @@ public sealed class NamedKeyColorSettings
 
     private static Color ReadColor(IniFile ini, string key)
     {
-        if (!ini.TryGetValue(SectionName, key, out string rawValue) ||
-            !TryParseColor(rawValue, out Color color))
+        if (!ini.TryGetValue(SectionName, key, out string rawValue))
         {
-            throw new InvalidOperationException($"{key} の値が不正です。");
+            throw new InvalidOperationException($"{key} が見つかりません。");
         }
+
+        if (!TryParseColor(rawValue, out Color color, out string errorMessage))
+        {
+            throw new InvalidOperationException($"{key} の値が不正です。{errorMessage}");
+        }
+
         return color;
     }
 
-    private static bool TryParseColor(string rawValue, out Color color)
+    private static bool TryParseColor(string rawValue, out Color color, out string errorMessage)
     {
         color = default;
+        errorMessage = null;
+
         string[] parts = rawValue.Split(',');
         if (parts.Length != 3)
         {
+            errorMessage = BuildErrorMessage(rawValue);
             return false;
         }
 
@@ -362,12 +466,30 @@ public sealed class NamedKeyColorSettings
             !byte.TryParse(parts[1], out byte g) ||
             !byte.TryParse(parts[2], out byte b))
         {
+            errorMessage = BuildErrorMessage(rawValue);
             return false;
         }
 
         color = Color.FromArgb(r, g, b);
         return true;
     }
+
+    private static string BuildErrorMessage(string rawValue)
+    {
+        return rawValue.Any(IsFullWidth)
+            ? $"全角文字が含まれています。半角で入力してください: \"{rawValue}\""
+            : $"RGB値の形式が不正です（例: 120,56,72）: \"{rawValue}\"";
+    }
+
+    private static bool IsFullWidth(char c)
+    {
+        // 全角英数・記号（Fullwidth Forms: U+FF00〜U+FFEF）と全角スペース（U+3000）を対象とする
+        return (c >= FullWidthFormsStart && c <= FullWidthFormsEnd) || c == IdeographicSpace;
+    }
+
+    private const char FullWidthFormsStart = '＀';
+    private const char FullWidthFormsEnd = '￯';
+    private const char IdeographicSpace = '　';
 }
 ```
 
@@ -379,6 +501,56 @@ public sealed class NamedKeyColorSettings
 色の数が可変（5〜20色）で、用途も個別に決まっていない場合は、増減のたびに
 コード修正が発生するこの方式は不向き。あくまで、色の数と用途が固定されている
 設定（背景色・警告色など数個限定）向けのパターンとして参考に載せている。
+
+## 全角文字が入力された場合のエラーメッセージ
+
+`R,G,B`は半角数字を前提とした仕様であり、全角数字（`１２０`など）や全角カンマ
+（`，`）が紛れ込んだ値は、引き続き無効な値として弾く。半角前提という仕様自体は
+変えない。
+
+ただし、単に`false`を返して黙ってスキップするだけでは、なぜ読み込めなかったのか
+が呼び出し側から分からない。そこで4パターンすべての`TryParseColor`に
+`out string errorMessage`を追加し、失敗時には元の生の文字列（全角文字もそのまま）
+を含めたメッセージを返すようにした。
+
+```csharp
+private static string BuildErrorMessage(string rawValue)
+{
+    return rawValue.Any(IsFullWidth)
+        ? $"全角文字が含まれています。半角で入力してください: \"{rawValue}\""
+        : $"RGB値の形式が不正です（例: 120,56,72）: \"{rawValue}\"";
+}
+```
+
+全角文字かどうかは、Unicodeの「Fullwidth Forms」ブロック（`U+FF00`〜`U+FFEF`。
+全角数字・全角カンマ・全角英字などが含まれる）と全角スペース（`U+3000`）に
+入っているかで判定している。該当する文字が1つでもあれば「全角文字が原因」と
+分かるメッセージに、そうでなければ「区切りの数が違う」「範囲外の数値」といった
+一般的な形式不正のメッセージに振り分ける。
+
+連番＋打ち切り方式／連番＋歯抜け許容・ソート方式／1行まとめ方式の3つは、
+失敗した行のメッセージを`Errors`プロパティ（`IReadOnlyList<string>`）に集約する。
+`Load`実行後にこれを列挙すれば、「何番目のキーが」「どんな理由で」弾かれたかを
+まとめて確認できる。
+
+```csharp
+var loader = new SequentialStopIniColorLoader();
+IReadOnlyList<Color> colors = loader.Load(ini);
+
+foreach (string error in loader.Errors)
+{
+    Console.WriteLine(error);
+    // 例: Color02: 全角文字が含まれています。半角で入力してください: "２００,100,50"
+}
+```
+
+一方、固定名キー方式（`NamedKeyColorSettings`）はもともと不正値を
+`InvalidOperationException`で即座に落とすfail-fast設計なので、`Errors`に
+集約するのではなく、例外メッセージにそのまま`errorMessage`を含める形にした。
+
+いずれのパターンも、**「全角は読み込めない」という結論は変えず、
+「なぜ読み込めなかったかを本人がすぐ分かるようにする」という診断性だけを
+改善している**点がポイント。値を自動的に半角へ正規化して受理する設計ではない。
 
 ## 結論
 
