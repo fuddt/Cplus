@@ -7,6 +7,12 @@ namespace PictureBoxDragSelect
 {
     public partial class Form1 : Form
     {
+        // これ以下の移動量ならドラッグではなくクリックとみなす
+        private const int ClickThreshold = 4;
+
+        // クリック時に判定対象とする矩形の一辺の長さ
+        private const int ClickRegionSize = 4;
+
         private readonly Button _openButton;
         private readonly CheckBox _enableContextMenuCheckBox;
         private readonly PictureBox _pictureBox;
@@ -16,6 +22,9 @@ namespace PictureBoxDragSelect
         private bool _isDragging;
         private Point _dragStart;
         private Rectangle _dragRectangle;
+
+        // ドラッグ選択・クリック選択のどちらでも、確定した領域をこのイベントで通知する
+        public event EventHandler<RegionSelectedEventArgs> RegionSelected;
 
         public Form1()
         {
@@ -63,6 +72,9 @@ namespace PictureBoxDragSelect
             Controls.Add(_pictureBox);
             Controls.Add(_openButton);
             Controls.Add(_enableContextMenuCheckBox);
+
+            // 動作確認用に、確定した選択範囲をウィンドウタイトルに表示する
+            RegionSelected += (sender, args) => Text = $"選択範囲: {args.Region}";
         }
 
         private void OpenButton_Click(object sender, EventArgs e)
@@ -113,10 +125,31 @@ namespace PictureBoxDragSelect
                 return;
             }
 
+            Rectangle selectedRegion = IsClick(_dragStart, e.Location)
+                ? BuildClickRegion(e.Location)
+                : NormalizeRectangle(_dragStart, e.Location);
+
+            RegionSelected?.Invoke(this, new RegionSelectedEventArgs(selectedRegion));
+
             // マウスアップのタイミングで選択枠を消す
             _isDragging = false;
             _dragRectangle = Rectangle.Empty;
             _pictureBox.Invalidate();
+        }
+
+        private static bool IsClick(Point start, Point end)
+        {
+            return Math.Abs(end.X - start.X) <= ClickThreshold
+                && Math.Abs(end.Y - start.Y) <= ClickThreshold;
+        }
+
+        private static Rectangle BuildClickRegion(Point clickPoint)
+        {
+            return new Rectangle(
+                clickPoint.X - ClickRegionSize / 2,
+                clickPoint.Y - ClickRegionSize / 2,
+                ClickRegionSize,
+                ClickRegionSize);
         }
 
         private void PictureBox_Paint(object sender, PaintEventArgs e)
