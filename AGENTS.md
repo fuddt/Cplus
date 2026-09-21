@@ -44,3 +44,8 @@ Player (src/Player.h/.cpp)
 `docs/chapters/` contains the learning curriculum (chapters 0–7) that explains the rationale behind each design choice. When making changes, these docs describe the intended teaching goals.
 
 `phase1/` is legacy Windows console code and is not part of the CMake build.
+
+## Goal Management & Slide Guidelines
+
+- `docs/goal_management/slides/`: スライド教材を作成・更新する際、末尾に「次回予告」スライドは含めない（不要）。
+- 作業完了時は必ず最後に `git commit` および `git push origin main` を行う。
