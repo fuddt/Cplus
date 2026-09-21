@@ -47,5 +47,6 @@ Player (src/Player.h/.cpp)
 
 ## Goal Management & Slide Guidelines
 
-- `docs/goal_management/slides/`: スライド教材を作成・更新する際、末尾に「次回予告」スライドは含めない（不要）。
+- `docs/goal_management/slides/` の作成・更新時は、必ず `docs/goal_management/slide_design_guidelines.md` の教育資料作成ルール（Whyファースト、既習事項による新概念駆動、C++顕微鏡化、意味のノイズ排除、技術的負債ゼロ）を遵守する。
+- スライド末尾に「次回予告」スライドは含めない（不要）。「本日のまとめ」で完結させる。
 - 作業完了時は必ず最後に `git commit` および `git push origin main` を行う。
