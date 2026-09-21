@@ -47,8 +47,8 @@ Player (src/Player.h/.cpp)
 
 ## Goal Management & Slide Guidelines
 
-- `docs/goal_management/slides/` の構成・役割分担・ストーリー展開は `docs/goal_management/curriculum_design_specification.md`（教材設計仕様書：全8回基準）をマスターとする。
-- 「1回につき主要なメンタルモデルを原則1つ作る（1回30〜45分目安）」を遵守し、過積載を防止する。
+- `docs/goal_management/slides/` の構成・役割分担・ストーリー展開は `docs/goal_management/curriculum_design_specification.md`（教材設計仕様書：現行推奨9回）をマスターとする。
+- 回数そのものは設計制約ではなく、「1回につき主要なメンタルモデルを原則1つ作る（1回30〜45分目安）」を遵守し、過積載を防止する。
 - 作成・更新時は、必ず `docs/goal_management/slide_design_guidelines.md` の教育資料作成ルール（Whyファースト、既習事項による新概念駆動、C++顕微鏡化、意味のノイズ排除、技術的負債ゼロ）を遵守する。
 - スライド末尾に「次回予告」スライドは含めない（不要）。「本日のまとめ」で完結させる。
 - 作業完了時は必ず最後に `git commit` および `git push origin main` を行う。
