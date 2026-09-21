@@ -220,24 +220,32 @@ std::ofstream outFile("output.bin", std::ios::binary); // 書き込み
 
 # ファイルサイズを取得してバッファを用意する
 
-## ファイル末尾へ移動して「何バイトあるか」を測るイディオム
+## 外部I/Oは「成功した前提」で次へ進まない！
 
 バイナリファイルを読み込むには、まず全体を受け止めるバッファの大きさを知る必要があります。
 
 ```cpp
-// ※文法は覚えなくてOK！ 「位置を動かして長さを測る」様子を見る
+// ※文法は覚えなくてOK！ 「外部I/Oの成功を確認しながら進む」様子を見る
 std::ifstream file("data.bin", std::ios::binary);
+if (!file) {
+    throw std::runtime_error("ファイルを開けません");
+}
 
-file.seekg(0, std::ios::end);            // 1. ファイルの末尾へシーク（移動）
-std::streamsize fileSize = file.tellg(); // 2. 現在の読み取り位置（=ファイルサイズ）を取得
+file.seekg(0, std::ios::end);            // 1. ファイル末尾へシーク（移動）
+std::streamsize fileSize = file.tellg(); // 2. 現在位置（=ファイルサイズ）を取得
+
+if (fileSize < 0) {
+    throw std::runtime_error("ファイルサイズを取得できません");
+}
+
 file.seekg(0, std::ios::beg);            // 3. 読み取り位置を先頭に戻す
 
-// 4. ファイル全体のbyteを受け止める正確なバッファを確保！
+// 4. 正しいサイズであることを確認して初めてバッファを確保！
 std::vector<uint8_t> buffer(static_cast<size_t>(fileSize));
 ```
 
-* `seekg`（seek get: 読み取り位置の移動）と `tellg`（tell get: 現在位置の報告）
-* テープの長さを測ってから、ぴったりサイズのバッファを用意する
+* **安全性のポイント**: もし `tellg()` が失敗して `-1` を返した場合、符号なしの `size_t` に変換すると巨大な正数になり、異常なメモリ確保（クラッシュ）の原因になる
+* 外部とのやりとり（ファイルやネットワーク）は、**「成功したことを確認してから次へ進む」** が鉄則！
 
 ---
 
@@ -283,8 +291,12 @@ if (fileSize < 16) {
 ```
 
 ```text
-【安全なアクセスの順序】
-ファイルを読む
+【安全なアクセスの順序（水際防衛の全体像）】
+ファイルをopen（オープン成功を確認）
+  ↓
+ファイルサイズを安全に測る（tellg < 0 を排除）
+  ↓
+バッファへ一括読み込み（read成功を確認）
   ↓
 ヘッダー分の最低サイズ（16バイト以上）を確認する  ← ★まずここ！
   ↓
@@ -339,14 +351,26 @@ uint32_t width   = static_cast<uint32_t>(buffer[4]) | (static_cast<uint32_t>(buf
 uint32_t height  = static_cast<uint32_t>(buffer[8]) | ...;
 uint32_t dataSize= static_cast<uint32_t>(buffer[12])| ...;
 
-// ヘッダーに書かれたデータ部が、実際のファイルの中に収まっているか？
+// ① 期待される画素データ量（8bitグレースケールなら width × height）
+// ※巨大な数値による掛け算オーバーフローを防ぐため、十分な型（uint64_t）で計算
+uint64_t expectedPixels = static_cast<uint64_t>(width) * height;
+
+// ② ヘッダー内の整合性（画素数と dataSize は一致しているか？）
+if (static_cast<uint64_t>(dataSize) != expectedPixels) {
+    throw std::runtime_error("ヘッダー内のサイズ情報に矛盾があります");
+}
+
+// ③ ファイル全体との整合性（ヘッダー16B + データ部が、実際のファイルに収まっているか？）
 if (static_cast<size_t>(fileSize) < 16 + static_cast<size_t>(dataSize)) {
     throw std::runtime_error("データ部が途中で切れています（ファイル破損）");
 }
 ```
 
-* **注意**: 壊れたファイルが巨大な値を主張している場合、掛け算のオーバーフローにも注意が必要
-* 外部ファイルに書かれた数値を鵜呑みにせず、**「サイズに矛盾はないか？」** を検証する！
+* **3段構えの検証**:
+  1. `width * height` がオーバーフローしないか（巨大値による桁あふれ防止）
+  2. ヘッダー内の値同士（画素数と `dataSize`）が矛盾していないか
+  3. ヘッダーとファイル実サイズ（`16 + dataSize <= fileSize`）が合っているか
+* 外部ファイルに書かれた数値を鵜呑みにせず、**「サイズや整合性に矛盾はないか？」** を検証する！
 
 ---
 
@@ -388,7 +412,7 @@ outFile.write(reinterpret_cast<const char*>(buffer.data()), buffer.size());
   * パディングや環境差を防ぐため、仕様に沿ってシリアライズ/デシリアライズする
 * **③ `std::ios::binary` は「意図しない改行変換を防ぐ」ために付ける**
   * プラットフォームの自動変換を抑制し、byte列を1ビットも変えずに扱う
-* **④ 外部データは「読む前にサイズを確認する」**
-  * 最低サイズ確認 ──> マジックナンバー ──> データ部の整合性 の順で検証する
+* **④ 外部データは「成功を確認しながら、読む前にサイズを検証する」**
+  * open / tellg / read の成否 ──> 最低サイズ ──> マジックナンバー ──> データ部の整合性 の順で検証する
 * **⑤ ファイルも結局「byte列 ＋ 仕様（解釈ルール）」で意味を持つ**
   * byteを触れることと、仕様全体の整合性を保つことは別。常に仕様書を起点にする
