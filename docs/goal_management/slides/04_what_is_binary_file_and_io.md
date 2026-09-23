@@ -223,7 +223,8 @@ binary file（パディングの一切ない、純粋な仕様通りのファイ
 
 ```cpp
 uint8_t  id   = 7;          // 0x07
-uint32_t size = 100;        // 0x00000064 (little-endian: 64 00 00 00)
+uint32_t size = 100;        // 数値としては 0x00000064
+                            // ファイル仕様が little-endian なので、byte列は 64 00 00 00 にする
 
 // 1. 仕様通りのサイズ（5バイト）のバッファを用意
 std::vector<uint8_t> buffer(5);
@@ -243,15 +244,15 @@ outFile.write(reinterpret_cast<const char*>(buffer.data()),
 * **疑問：「struct丸ごとwriteはダメで、buffer丸ごとwriteはなぜ良いの？」**:
   * `struct` ──> コンパイラ都合の内部レイアウト（Paddingが勝手に入る）
   * `uint8_t buffer` ──> **プログラマが仕様通りに1byteずつ並べたbyte列そのもの**
-  * 仕様通りに構築済みの `uint8_t` バッファなら、そのまま一括writeして安全です！
+  * **仕様レイアウトの観点では、そのbyte列をそのまま一括writeできます**（※I/O自体の成功確認やエラーハンドリングは別途必要）
 
 ---
 
-# 読み込み側（Deserialize）と完全な左右対称
+# 読み込み側（Deserialize）は逆方向の変換
 
 ## ファイルI/Oの本質は「値 ⇄ byte列」の双方向変換
 
-書き込んだファイルから値を読み戻す処理は、書き込みと完全に左右対称になります。
+書き込んだファイルから値を読み戻す処理は、シリアライズと逆方向の変換になります。
 
 ```cpp
 // 1. ファイルから 5バイト を buffer に一括読み込み（read）後……
