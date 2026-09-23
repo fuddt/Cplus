@@ -55,8 +55,8 @@ A3 5C 7F 12 84 09 B2 ...
 
 ## 生メモリを自在にハンドリングする「3本柱」
 
-* **① bitを切り出す**
-  * 12bit Packed画像をシフトとマスクで救出する（第1回の伏線回収！）
+* **① bitを切り出す・詰める**
+  * 12bit Packed画像の Unpack / Pack と実務活用（第1回の伏線回収！）
 * **② byteを移す**
   * 連続する塊をそのまま動かす `memcpy` と矩形コピー（第2回の復習！）
 * **③ byte列を読む**
@@ -275,6 +275,98 @@ uint16_t b = (static_cast<uint16_t>(byte1 & 0x0F) << 8) | byte2;
   * 最終的に16bit値を作ることをコード上で明示し、意図通りの型でシフトを扱うためです
 * **bit操作の真の役割**:
   * 「難しい算数のパズル」ではなく、**「バイト境界をまたいだ生データを、プログラムで計算しやすい整数へアンパックする道具」** なのです！
+
+---
+
+# 逆方向も同じ道具：16bit整数からPackedへ戻す（Pack）
+
+## 2つの uint16_t から 3バイトのPacked列を組み立てる
+
+保存や通信のために**Packed形式へ戻す（Pack）**ときも、まったく同じ `shift / mask / OR` を使います。
+
+```text
+【入力: 計算後の16bit画素値 × 2】
+uint16_t pixelA: 0000 AAAAAAAA AAAA  (下位12bitに画素A)
+uint16_t pixelB: 0000 BBBBBBBB BBBB  (下位12bitに画素B)
+
+                 ↓ パッキング（Pack）
+
+【出力: 3バイトのPackedバイト列】
+byte0: [ AAAAAAAA ]           (pixelA の上位8bit)
+byte1: [ AAAA BBBB ]           (pixelA の下位4bit ＋ pixelB の上位4bit)
+byte2: [ BBBBBBBB ]           (pixelB の下位8bit)
+```
+
+```cpp
+// 画素Aの上位8bit（右へ4bitシフトして下位8bitを取り出す）
+uint8_t byte0 = static_cast<uint8_t>((pixelA >> 4) & 0xFF);
+
+// 画素Aの下位4bitを左へ4bit ＋ 画素Bの上位4bit（右へ8bitシフトしたもの）を合体
+uint8_t byte1 = static_cast<uint8_t>(((pixelA & 0x0F) << 4) | ((pixelB >> 8) & 0x0F));
+
+// 画素Bの下位8bitを取り出す
+uint8_t byte2 = static_cast<uint8_t>(pixelB & 0xFF);
+```
+
+* 「Unpack（解凍）」も「Pack（圧縮）」も、**「位置をシフトし、余計なbitをマスクし、ORで合体する」** という対称的な道具で書けます！
+
+---
+
+# 実務でいつ使うのか？ 4つの代表シーン
+
+## 「外部のbyte列 ⇅ プログラム内部の数値」を結ぶ架け橋
+
+bit操作は単なる画像処理のパズルではなく、実務のあらゆる境界で使われます。
+
+```text
+① カメラ / センサからの受信
+   Camera / Sensor SDK ──> Packed Buffer ──(Unpack)──> uint16_t[]（画像処理へ）
+   ※カメラが通信帯域節約のためPacked形式で返す場合、アプリ側で計算用整数へ戻す
+
+② バイナリファイルからの読み込み
+   Binary File ──(read)──> Packed byte列 ──(Unpack)──> uint16_t[]
+   ※ファイルから読み込んだだけでは画素値にならない！ 仕様に従って解釈・復元が必要
+
+③ バイナリファイルへの書き込み
+   uint16_t[]（処理結果） ──(Pack)──> Packed byte列 ──(write)──> Binary File
+   ※保存先ファイルフォーマットがPacked仕様の場合、容量節約のためPackして書き込む
+
+④ デバッグ・Hex Dump（バイナリダンプ）確認
+   Hex Dump: B3 D5 67 ──> 仕様に従ってbit分解 ──> pixelA = 0x0B3D (2877)
+   ※バイナリダンプを見て「正しく記録されているか」を手計算で検証するときにも使う！
+```
+
+* **本質**:
+  * **「外部のbyte列（通信・ファイル・ダンプ）」と「内部の数値（計算用整数）」の境界を越える道具** が、このbit操作です！
+  * ※注記：ファイルやダンプが生データそのままの仕様もあれば、16bit整数の仕様もあります。「byte列 ＋ 仕様 ＝ 意味」の原則は不変です。
+
+---
+
+# 実務の視点：バッファサイズ差と Round Trip 検証
+
+## メモリのトレードオフ と 可逆性テストの重要性
+
+```text
+【Packed vs Unpacked のバッファサイズ比較】
+Packed形式   : 2画素 ＝ 3バイト（24bit）
+Unpacked形式 : 2画素 ＝ 4バイト（uint16_t × 2 ＝ 32bit）
+──> Unpackedバッファは、Packedバッファの 約1.33倍（+33%）のメモリを消費！
+    例：100万画素なら、Packed約1.5MB ──> Unpacked約2.0MB
+```
+
+* **実務でのメモリ注意点**:
+  * 入力（Packed）と出力（Unpacked）を両方保持すると一時的に両方のRAMが必要になります。
+  * 実務ではchunk単位の変換やストリーミング処理など、ピークメモリを抑える設計も検討されます。
+
+```text
+【Round Trip（可逆性）による変換の正しさの検証】
+元のpixel値 ──(Pack)──> Packed byte列 ──(Unpack)──> 復元されたpixel値
+                                                          │
+【テスト検証】 original == restored （元通り復元できるか？） <────┘
+```
+
+* **実務のテスト原則**:
+  * 相互変換コードを書いたら、**「Pack ──> Unpack で元の値に完全に戻るか（Round Trip）」** をテストすることで、シフト幅やマスクのバグを確実に防止できます！
 
 ---
 
@@ -504,8 +596,8 @@ uint32_t bits = std::bit_cast<uint32_t>(f);
 
 ## 持ち帰ってほしい 5つの重要ポイント
 
-* **① bit単位で欲しい部分を取る ──> shift / mask / OR**
-  * 12bit Packed画素のように、バイト境界をまたぐデータも自在に復元できる
+* **① bit単位で欲しい部分を取る・詰める ──> shift / mask / OR**
+  * Unpack（解凍）もPack（圧縮）も同じ道具。外部byte列と内部数値を相互変換できる
 * **② byte単位で塊を移す ──> memcpy**
   * Strideが異なる画像間では、LineSpanを考慮して1行ずつコピーする
 * **③ byte列を値にするときは ──> 「フォーマット仕様」が必須**
