@@ -1,0 +1,15 @@
+{
+  "name": "slide-preview",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Markdown slide preview / PPTX export tooling (independent from the C++ CMake build)",
+  "scripts": {
+    "exp:a": "marp experiments/sample3.md --pptx -o experiments/out/a_marp_image.pptx",
+    "exp:b": "marp experiments/sample3.md --pptx --pptx-editable -o experiments/out/b_marp_editable.pptx",
+    "exp:c": "node experiments/make_c.js"
+  },
+  "devDependencies": {
+    "@marp-team/marp-cli": "4.5.1",
+    "pptxgenjs": "4.0.1"
+  }
+}
