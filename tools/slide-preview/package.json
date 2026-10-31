@@ -4,7 +4,7 @@
   "private": true,
   "description": "Markdown slide preview / PPTX export tooling (independent from the C++ CMake build)",
   "scripts": {
-    "preview": "marp -s ../../docs/goal_management/slides",
+    "preview": "marp --engine ./preview.engine.mjs -s ../../docs/goal_management/slides",
     "exp:a": "marp experiments/sample3.md --pptx -o experiments/out/a_marp_image.pptx",
     "exp:b": "marp experiments/sample3.md --pptx --pptx-editable -o experiments/out/b_marp_editable.pptx",
     "exp:c": "node experiments/make_c.js"
