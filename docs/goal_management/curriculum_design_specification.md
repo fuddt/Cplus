@@ -44,7 +44,7 @@
 第1部：データを追う「メモリ・画像・バイナリ」編
   01 データとメモリの正体 ──> bit / byte / 解釈ルール / 集合ポスト / 12bit応用 / エンディアン / パディング
   02 画像データの正体     ──> 光と色 / RGB / pixel / 2次元→1次元 / y*width+x / Stride / Top-down,Bottom-up
-  03 生メモリを操る       ──> bit切り出し（12bit復元）/ memcpy（矩形コピー）/ byte列復元 / reinterpret_castの注意点
+  03 生メモリを操る       ──> bit切り出し（12bit復元）/ memcpy（矩形コピー）/ byte列復元
   04 バイナリファイルと仕様 ──> メモリとファイル / 仕様に基づく保存 / header+payload / magic number / binary I/O
 
 第2部：プログラムが部品として動く「ビルド・境界」編
@@ -126,11 +126,8 @@
      * byte列だけでは意味がない。フォーマット仕様（bit位置・offset・size・endian・stride）と組み合わせて初めて意味あるデータになる（第1回の結実）。
      * 方法A（明示的な合成）：シフトとORで4バイトから1つの `uint32_t` を組み立てる（4つの箱から1つの値を作るのが見える安全・移植性の高い基本形）。
      * 方法B（`std::memcpy` による値の取り出し）：trivially copyableな型を安全に読み出す。ただしホストとデータのエンディアン一致が必要。
-     * 【実務で見かけるコードへの健全な警戒心】：
-       * `reinterpret_cast<const Header*>(buffer)` を見かけることがあるが、「安全なゼロコピー技」として推奨しない。
-       * 確認すべき5大条件（①Lifetime、②Aliasing、③Alignment、④Padding/Offset、⑤Endianness）を冷静にチェックできる人になる。
-       * `std::bit_cast` は同サイズのtrivially copyable型間でビット表現を転換するものであり、ゼロコピーviewではないことを正しく理解する。
-       * 外部データ仕様上のoffsetから明示的に読む姿勢を基本とし、構造体を使う場合は `static_assert`（サイズ・オフセット）で検証する。
+     * 外部データ仕様上のoffsetから明示的に読む姿勢を基本とする。構造体を被せて直接読むコード（`reinterpret_cast` 等）を実務で見かけたら、仕様（offset・size・endian）と一致しているかを確認する、と一言で触れる。
+     * 【扱わない（上級者向け）】`reinterpret_cast` の5大条件（Lifetime・Aliasing・Alignment・Padding/Offset・Endianness）、`std::bit_cast`、`static_assert` による検証。第3回は認知的負荷を抑えるため本編から外した。
 
 ---
 
